@@ -10,7 +10,7 @@ test = """
 """
 
 
-def sum_dist(s):
+def sum_sim(s):
     xl, yl = [], []
     for line in s.split("\n"):
         (x, y) = re.split(r"\s+", line)
@@ -19,13 +19,13 @@ def sum_dist(s):
     xl.sort()
     yl.sort()
     sum = 0
-    for x, y in zip(xl, yl):
-        sum += abs(x - y)
+    for x in xl:
+        sum += x * yl.count(x)
     return sum
 
 
-print(sum_dist(test.strip()))
+print(sum_sim(test.strip()))
 
 with open("inputs/01.txt") as f:
     chal = f.read()
-    print(sum_dist(chal.strip()))
+    print(sum_sim(chal.strip()))
