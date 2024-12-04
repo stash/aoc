@@ -20,6 +20,7 @@ class Vec2D:
     y: int
 
 
+# This isn't needed for part 2 since the search is always in bounds, but left here for reference:
 class Nowrap:
     def __init__(self, inner):
         self.inner = inner
@@ -41,42 +42,37 @@ def parse(input):
     return Nowrap(rows)
 
 
-def search_one(m, at: Vec2D, d: Vec2D) -> int:
+def search_one(m, at: Vec2D) -> int:
     try:
-        if (
-            m[at.y][at.x] == "X"
-            and m[at.y + d.y][at.x + d.x] == "M"
-            and m[at.y + 2 * d.y][at.x + 2 * d.x] == "A"
-            and m[at.y + 3 * d.y][at.x + 3 * d.x] == "S"
-        ):
-            # print(f"{at!r} {step!r}")
-            return 1
+        if m[at.y][at.x] == "A":  # fast: center first
+            corners = "".join(
+                [  # clockwise:
+                    m[at.y - 1][at.x - 1],  # up left
+                    m[at.y - 1][at.x + 1],  # up right
+                    m[at.y + 1][at.x + 1],  # down right
+                    m[at.y + 1][at.x - 1],  # down left
+                ]
+            )
+            return (
+                1  # cycle pattern clockwise:
+                if corners == "MMSS"
+                or corners == "SMMS"
+                or corners == "SSMM"
+                or corners == "MSSM"
+                else 0
+            )
         else:
             return 0
     except IndexError:
         return 0
 
 
-directions = [
-    Vec2D(1, 0),
-    Vec2D(1, 1),
-    Vec2D(0, 1),
-    Vec2D(-1, 1),
-    Vec2D(-1, 0),
-    Vec2D(-1, -1),
-    Vec2D(0, -1),
-    Vec2D(1, -1),
-]
-
-
 def search(m):
     sum = 0
-    for x in range(len(m[0])):
-        for y in range(len(m)):
-            at = Vec2D(x, y)
-            # print(f"{at!r}:")
-            for d in directions:
-                sum += search_one(m, at, d)
+    for x in range(1, len(m[0]) - 1):
+        for y in range(1, len(m) - 1):
+            center = Vec2D(x, y)
+            sum += search_one(m, center)
     return sum
 
 
