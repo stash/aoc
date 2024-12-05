@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.94"
+clap = { version = "4.5.22", features = ["derive"] }
+patharg = "0.4.0"
+
+[dev-dependencies]
+indoc = "2.0.5"
