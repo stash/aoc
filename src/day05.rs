@@ -1,7 +1,8 @@
-use itertools::Itertools;
-use std::str::Split;
+use std::cmp::Ordering;
 
-use anyhow::{bail, Result};
+use itertools::Itertools;
+
+use anyhow::Result;
 
 struct RuleIndex {
     rules: Vec<String>,
@@ -18,45 +19,60 @@ impl RuleIndex {
     }
 }
 
-/// returns middle item if all the pages are in correct "order" relative to rules
-fn check_one_production<'a>(index: &RuleIndex, pages: Vec<&'a str>) -> Option<&'a str> {
-    for (a, b) in pages.iter().tuple_combinations() {
-        let c = format!("{}|{}", a, b);
-        let has = index.contains(&c);
-        println!("p {} -> {}", c, has);
-        if !has {
-            return None;
-        }
-    }
-
-    let mid = pages.len() / 2;
-    Some(pages[mid])
-}
-
-pub fn part1(lines: Vec<String>) -> Result<String> {
+fn prep(lines: Vec<String>) -> (Vec<String>, RuleIndex) {
     let (to_produce, mut rules): (Vec<_>, Vec<_>) =
         lines.into_iter().partition(|x| x.contains(','));
     _ = rules.pop();
     let index = RuleIndex::new(rules);
+    (to_produce, index)
+}
+
+fn mid_num(pages: &Vec<&str>) -> Result<usize> {
+    let mid = pages.len() / 2;
+    Ok(pages[mid].parse::<usize>()?)
+}
+
+fn rule_sort<'a>(pages: &Vec<&'a str>, index: &RuleIndex) -> Vec<&'a str> {
+    let mut sorted: Vec<&str> = pages.clone();
+    sorted.sort_by(|a, b| {
+        let c = format!("{}|{}", a, b);
+        if index.contains(&c) {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
+    sorted
+}
+
+pub fn part1(lines: Vec<String>) -> Result<String> {
+    let (to_produce, index) = prep(lines);
     let mut total: usize = 0;
     for p in to_produce {
         println!("Checking: {}", p);
         let pages: Vec<&str> = p.split(',').collect();
-        match check_one_production(&index, pages) {
-            Some(n) => {
-                println!("Some: {}", n);
-                total += n.parse::<usize>()?
-            }
-            None => {
-                println!("None!")
-            }
+        let sorted = rule_sort(&pages, &index);
+        if pages == sorted {
+            // count already sorted
+            total += mid_num(&pages)?
         }
     }
     Ok(total.to_string())
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("incomplete")
+    let (to_produce, index) = prep(lines);
+    let mut total: usize = 0;
+    for p in to_produce {
+        println!("Checking: {}", p);
+        let pages: Vec<&str> = p.split(',').collect();
+        let sorted = rule_sort(&pages, &index);
+        if pages != sorted {
+            // count non-sorted
+            total += mid_num(&sorted)?
+        }
+    }
+    Ok(total.to_string())
 }
 
 #[cfg(test)]
@@ -103,6 +119,46 @@ mod test {
         .collect();
 
         assert_eq!(part1(input)?, "143");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2() -> Result<()> {
+        let input: Vec<String> = indoc! {"
+            47|53
+            97|13
+            97|61
+            97|47
+            75|29
+            61|13
+            75|53
+            29|13
+            97|29
+            53|29
+            61|53
+            97|53
+            61|29
+            47|13
+            75|47
+            97|75
+            47|61
+            75|61
+            47|29
+            75|13
+            53|13
+            
+            75,47,61,53,29
+            97,61,53,29,13
+            75,29,13
+            75,97,47,61,53
+            61,13,29
+            97,13,75,29,47
+        "}
+        .lines()
+        .map(|x| x.to_string())
+        .collect();
+
+        assert_eq!(part2(input)?, "123");
         Ok(())
     }
 }
