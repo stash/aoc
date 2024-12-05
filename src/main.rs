@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use patharg::InputArg;
 
 mod day01;
+mod day05;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "aoc")]
@@ -22,6 +23,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     Day01,
+    Day05
 }
 
 fn line_vec(input: InputArg) -> Result<Vec<String>> {
@@ -43,7 +45,15 @@ fn main() -> Result<()> {
             } else {
                 day01::part2(lines)
             }
-        }
+        },
+        Commands::Day05 => {
+            let lines = line_vec(args.input)?;
+            if !args.two {
+                day05::part1(lines)
+            } else {
+                day05::part2(lines)
+            }
+        },
     };
     println!("Result: {}", r?);
     Ok(())
