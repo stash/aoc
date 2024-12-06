@@ -1,8 +1,5 @@
-use std::cmp::Ordering;
-
-use itertools::Itertools;
-
 use anyhow::Result;
+use std::cmp::Ordering;
 
 struct RuleIndex {
     rules: Vec<String>,

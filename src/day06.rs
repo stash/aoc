@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
-use itertools::Itertools;
-use std::{collections::HashSet, io::Empty};
+use anyhow::Result;
+use std::collections::HashSet;
 
+#[derive(Debug, Clone, Copy)]
 enum Tile {
     Empty,
     Obst,
@@ -14,6 +14,7 @@ pub struct Pos {
     y: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Dir {
     Up,
     Left,
@@ -31,6 +32,7 @@ impl Dir {
     }
 }
 
+#[derive(Clone)] // Allow reality-forking
 struct Map {
     bound: Pos,
     dir: Dir,
@@ -57,6 +59,7 @@ impl Map {
                         dir = Dir::Up;
                         Tile::Visited
                     }
+                    // unsure if guard can be any of these initially, my challenge has it facing up:
                     '<' => {
                         guard = Pos { x, y };
                         dir = Dir::Left;
@@ -80,8 +83,6 @@ impl Map {
             }
             grid.push(row);
         }
-        let mut visited = HashSet::new();
-        visited.insert(guard);
         Self {
             bound: Pos { x: w, y: h },
             dir,
@@ -98,7 +99,7 @@ impl Map {
         }
     }
 
-    fn next_move(&self) -> Option<Pos> {
+    pub fn next_move(&self) -> Option<Pos> {
         match self.dir {
             Dir::Up => {
                 if self.guard.y == 0 {
@@ -181,8 +182,52 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
+fn is_loopable(reality: &Map) -> bool {
+    if let Some(next_pos) = reality.next_move() {
+        let mut alt = reality.clone();
+        if let Some(tile) = alt.get_mut(next_pos) {
+            // warp in obstruction in front of guard iff Empty
+            match *tile {
+                Tile::Empty => {
+                    *tile = Tile::Obst;
+                }
+                _ => return false,
+            }
+        } else {
+            return false;
+        };
+
+        let mut been_there = HashSet::new();
+        loop {
+            if !been_there.insert((alt.guard, alt.dir)) {
+                // guard returned to the same position, facing the same direction
+                return true;
+            }
+            if !alt.simulate() {
+                return false; // guard exited
+            }
+        }
+    }
+    false
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("incomplete")
+    let mut reality = Map::new(lines);
+    let mut total: usize = 0;
+    loop {
+        // Check if obstructing the guard at this point in time would result in a loop:
+        if is_loopable(&reality) {
+            print!("@");
+            total += 1;
+        } else {
+            print!(".");
+        }
+        // Carry on with the illusion of a linear reality:
+        if !reality.simulate() {
+            break; // guard exited
+        }
+    }
+    Ok(total.to_string())
 }
 
 #[cfg(test)]
@@ -217,12 +262,22 @@ mod test {
     #[test]
     fn test_part2() -> Result<()> {
         let input: Vec<String> = indoc! {"
+            ....#.....
+            .........#
+            ..........
+            ..#.......
+            .......#..
+            ..........
+            .#..^.....
+            ........#.
+            #.........
+            ......#...
         "}
         .lines()
         .map(|x| x.to_string())
         .collect();
 
-        assert_eq!(part2(input)?, "");
+        assert_eq!(part2(input)?, "6");
         Ok(())
     }
 }
