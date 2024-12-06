@@ -4,6 +4,7 @@ use patharg::InputArg;
 
 mod day01;
 mod day05;
+mod day06;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "aoc")]
@@ -23,7 +24,8 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     Day01,
-    Day05
+    Day05,
+    Day06,
 }
 
 fn line_vec(input: InputArg) -> Result<Vec<String>> {
@@ -45,7 +47,7 @@ fn main() -> Result<()> {
             } else {
                 day01::part2(lines)
             }
-        },
+        }
         Commands::Day05 => {
             let lines = line_vec(args.input)?;
             if !args.two {
@@ -53,7 +55,15 @@ fn main() -> Result<()> {
             } else {
                 day05::part2(lines)
             }
-        },
+        }
+        Commands::Day06 => {
+            let lines = line_vec(args.input)?;
+            if !args.two {
+                day06::part1(lines)
+            } else {
+                day06::part2(lines)
+            }
+        }
     };
     println!("Result: {}", r?);
     Ok(())
