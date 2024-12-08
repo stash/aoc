@@ -92,7 +92,40 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not implemented")
+    let mut antinodes: HashSet<Pos> = HashSet::new();
+    let map = parse(lines)?;
+    for (_f, poses) in &map.nodes {
+        if poses.len() < 2 {
+            // no resonance possible
+            continue;
+        }
+        for i in 0..(poses.len() - 1) {
+            // for some initial position
+            let pi = poses[i];
+            antinodes.insert(pi);
+            for j in (i + 1)..poses.len() {
+                // calculate antinodes with positions after it in the list
+                let pj = poses[j];
+                antinodes.insert(pj);
+
+                let d = pi - pj;
+                // resonate along the delta
+                let mut a1 = pi + d;
+                while map.in_bounds(&a1) {
+                    antinodes.insert(a1);
+                    // println!("f {}: {:?}", _f, a1);
+                    a1 = a1 + d;
+                }
+                let mut a2 = pj - d;
+                while map.in_bounds(&a2) {
+                    antinodes.insert(a2);
+                    // println!("f {}: {:?}", _f, a2);
+                    a2 = a2 - d;
+                }
+            }
+        }
+    }
+    Ok(antinodes.into_iter().count().to_string())
 }
 
 #[cfg(test)]
@@ -129,7 +162,7 @@ mod test {
 
     #[test]
     fn test_part2() -> Result<()> {
-        assert_eq!(part2(input())?, "");
+        assert_eq!(part2(input())?, "34");
         Ok(())
     }
 }
