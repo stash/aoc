@@ -51,9 +51,19 @@ fn parse(lines: Vec<String>) -> Result<Map> {
     Ok(Map { free, alloc })
 }
 
+fn checksum(alloc: Vec<FileBlocks>) -> usize {
+    let mut total: usize = 0;
+    for (block_id, b) in alloc.into_iter().enumerate() {
+        for p in b.positions {
+            total += block_id * p;
+        }
+    }
+    total
+}
+
 pub fn part1(lines: Vec<String>) -> Result<String> {
     let mut map = parse(lines)?;
-    println!("before: {:?}", map);
+    // println!("before: {:?}", map);
     map.alloc.reverse();
 
     {
@@ -76,19 +86,61 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
             }
         }
     }
+
     map.alloc.reverse();
-    println!("after: {:?}", map.alloc);
-    let mut total: usize = 0;
-    for (block_id, b) in map.alloc.into_iter().enumerate() {
-        for p in b.positions {
-            total += block_id * p;
-        }
-    }
+    // println!("after: {:?}", map.alloc);
+    let total = checksum(map.alloc);
     Ok(total.to_string())
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not implemented")
+    let mut map = parse(lines)?;
+    println!("before: {:?}", map);
+
+    for file in map.alloc.iter_mut().rev() {
+        // println!("prior: {:?}", file);
+        let need = file.positions.len();
+        if map.free.len() == 0 {
+            break;
+        }
+        if map.free.len() < need {
+            // shortcut: impossible to relocate this file
+            continue;
+        }
+        let mut cursor: usize = 0;
+        let mut size: usize = 1;
+        'inner: loop {
+            if size == need {
+                // Found contiguous. Remove & assign the contiguous range
+                let range = (cursor + 1 - size)..=cursor;
+                file.positions = map.free.splice(range, []).collect();
+                // println!("relocated: {:?} {} {}", file, cursor, size);
+                break 'inner;
+            } else {
+                // Seek for contiguous
+                cursor += 1;
+                if cursor >= map.free.len() {
+                    // end of free list
+                    break 'inner;
+                }
+                let prev = map.free[cursor - 1];
+                let cur = map.free[cursor];
+                if cur == prev + 1 {
+                    // contiguous
+                    size += 1;
+                    // println!("  contig {} {} {} {}", prev, cur, cursor, size);
+                } else {
+                    // println!("  discontig {} {}", prev, cur);
+                    // not contiguous; reset to single block
+                    size = 1;
+                }
+            }
+        }
+    }
+
+    println!("after: {:?}", map.alloc);
+    let total = checksum(map.alloc);
+    Ok(total.to_string())
 }
 
 #[cfg(test)]
@@ -123,7 +175,7 @@ mod test {
 
     #[test]
     fn test_part2() -> Result<()> {
-        assert_eq!(part2(input())?, "");
+        assert_eq!(part2(input())?, "2858");
         Ok(())
     }
 }
