@@ -1,9 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::{Add, Sub},
-};
+use std::collections::BTreeSet;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 
 #[derive(Debug, Clone)]
 struct FileBlocks {
@@ -12,13 +9,13 @@ struct FileBlocks {
 
 #[derive(Debug)]
 struct Map {
-    free: Vec<usize>, // positions
+    free: BTreeSet<usize>, // positions
     alloc: Vec<FileBlocks>,
 }
 
 fn parse(lines: Vec<String>) -> Result<Map> {
     // Single very-long line, RLE pairs
-    let mut free: Vec<usize> = Vec::new();
+    let mut free: BTreeSet<usize> = BTreeSet::new();
     let mut alloc: Vec<FileBlocks> = Vec::new();
     let mut position: usize = 0;
     let mut substrs = lines
@@ -39,7 +36,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
         if let Some(free_len_c) = substrs.next() {
             let mut free_len: usize = free_len_c.to_string().parse()?;
             while free_len > 0 {
-                free.push(position);
+                free.insert(position);
                 position += 1;
                 free_len -= 1;
             }
@@ -93,52 +90,73 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
+fn take_contiguous(free: &mut BTreeSet<usize>, need: usize, limit: usize) -> Option<Vec<usize>> {
+    let mut found: Option<usize> = None;
+    if free.len() == 0 { return None }
+    if need == 1 {
+        // fast case for single-width hole
+        if let Some(first) = free.pop_first() {
+            if first < limit { return Some(vec![first]) }
+            else { return None }
+        } else { return None }
+    }
+    {
+        let mut iter = free.iter(); // closure for iterator
+        let mut prev = *(iter.next().expect("at least one element needed"));
+        let mut size: usize = 1;
+        while let Some(next) = iter.next() {
+            let cur = *next;
+            if cur > limit {
+                // prevent forward relocations. Past the point of no-return
+                return None;
+            }
+            if cur == (prev + 1) {
+                size += 1;
+            } else {
+                size = 1; // restart
+            }
+            
+            if size == need {
+                found = Some(cur - (size-1));
+                break;
+            }
+
+            prev = cur;
+        }
+    }
+    if let Some(found) = found {
+        let taken: Vec<usize> = (found .. (found+need)).collect();
+        for take in taken.iter() {
+            free.remove(take);
+        }
+        return Some(taken);
+    }
+    None
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
     let mut map = parse(lines)?;
-    println!("before: {:?}", map);
+    // println!("before: {:?}", map);
 
+    println!("before free {}", map.free.len());
     for file in map.alloc.iter_mut().rev() {
         // println!("prior: {:?}", file);
         let need = file.positions.len();
-        if map.free.len() == 0 {
-            break;
-        }
-        if map.free.len() < need {
-            // shortcut: impossible to relocate this file
-            continue;
-        }
-        let mut cursor: usize = 0;
-        let mut size: usize = 1;
-        'inner: loop {
-            if size == need {
-                // Found contiguous. Remove & assign the contiguous range
-                let range = (cursor + 1 - size)..=cursor;
-                file.positions = map.free.splice(range, []).collect();
-                // println!("relocated: {:?} {} {}", file, cursor, size);
-                break 'inner;
-            } else {
-                // Seek for contiguous
-                cursor += 1;
-                if cursor >= map.free.len() {
-                    // end of free list
-                    break 'inner;
-                }
-                let prev = map.free[cursor - 1];
-                let cur = map.free[cursor];
-                if cur == prev + 1 {
-                    // contiguous
-                    size += 1;
-                    // println!("  contig {} {} {} {}", prev, cur, cursor, size);
-                } else {
-                    // println!("  discontig {} {}", prev, cur);
-                    // not contiguous; reset to single block
-                    size = 1;
-                }
+
+        let limit = file.positions.first().ok_or_else(|| anyhow!("zero width file??"))?;
+        if let Some(mut relocations) = take_contiguous(&mut map.free, need, *limit) {
+            assert_eq!(file.positions.len(), relocations.len());
+            std::mem::swap(&mut file.positions, &mut relocations);
+            // return original positions to the pool
+            for pos in relocations {
+                map.free.insert(pos);
             }
         }
+        // println!("  after: {:?}", file);
     }
 
-    println!("after: {:?}", map.alloc);
+    // println!("after: {:?}", map.alloc);
+    println!("after free {}", map.free.len());
     let total = checksum(map.alloc);
     Ok(total.to_string())
 }
@@ -148,9 +166,11 @@ mod test {
     use anyhow::Result;
 
     use super::*;
+    
     fn ez_input() -> Vec<String> {
         "12345".lines().map(|x| x.to_string()).collect()
     }
+
     fn input() -> Vec<String> {
         "2333133121414131402"
             .lines()
