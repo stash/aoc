@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use patharg::InputArg;
 
+mod common;
 mod day01;
 mod day05;
 mod day06;

@@ -1,33 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::{Add, Sub},
-};
-
+use std::collections::{HashMap, HashSet};
 use anyhow::{anyhow, bail, Result};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Pos {
-    x: isize,
-    y: isize,
-}
-impl Sub for Pos {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-impl Add for Pos {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
+use crate::common::Pos;
 
 struct Map {
     nodes: HashMap<char, Vec<Pos>>,
