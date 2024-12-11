@@ -1,6 +1,6 @@
 use anyhow::Result;
 use enum_iterator::Sequence;
-use std::ops::{Add,Sub};
+use std::{fmt::Display, ops::{Add,Sub}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos {
@@ -42,6 +42,12 @@ impl Add for Pos {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
         }
+    }
+}
+
+impl Display for Pos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({},{})", self.x, self.y)
     }
 }
 

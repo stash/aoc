@@ -1,9 +1,8 @@
 use std::{collections::{HashMap, HashSet}, ops::Range};
 use anyhow::{anyhow, bail, Result};
+use itertools::Itertools;
 use crate::common::{Dir,Pos};
 use enum_iterator;
-
-
 
 #[derive(Debug)]
 struct Map {
@@ -32,7 +31,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
     Ok(map)
 }
 
-fn peak_closure(map: &mut Map) -> usize {
+fn peak_closure(map: &Map) -> usize {
     let mut above: HashMap<Pos, HashSet<Pos>> = HashMap::new();
     for p in &map.layers[9] {
         let mut reach = HashSet::new();
@@ -75,13 +74,40 @@ fn peak_closure(map: &mut Map) -> usize {
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
-    let mut map = parse(lines)?;
-    let total = peak_closure(&mut map);
+    let map = parse(lines)?;
+    let total = peak_closure(&map);
     Ok(total.to_string())
 }
 
+fn pathways(map: &Map) -> usize {
+    let mut above: HashMap<Pos, usize> = HashMap::new();
+    for p in &map.layers[9] {
+        above.insert(*p, 1);
+    }
+
+    for z in (0..=8).rev() {
+        let mut current: HashMap<Pos, usize> = HashMap::new();
+        for p1 in &map.layers[z] {
+            let mut up1 = 0;
+            for dir in enum_iterator::all::<Dir>() {
+                let p2 = p1.go(dir);
+                if let Some(up2) = above.get(&p2) {
+                    up1 += up2;
+                }
+            }
+            current.insert(*p1, up1);
+        }
+        above = current;
+    }
+
+    
+    above.into_values().sum()
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not implemented")
+    let map = parse(lines)?;
+    let total = pathways(&map);
+    Ok(total.to_string())
 }
 
 #[cfg(test)]
@@ -172,6 +198,50 @@ mod test {
     }
 
     #[test]
+    fn test_part2_a() -> Result<()> {
+        let text = indoc! {"
+            .....0.
+            ..4321.
+            ..5..2.
+            ..6543.
+            ..7..4.
+            ..8765.
+            ..9....
+        "};
+        assert_eq!(part2(lines(text))?, "3");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_b() -> Result<()> {
+        let text = indoc! {"
+            ..90..9
+            ...1.98
+            ...2..7
+            6543456
+            765.987
+            876....
+            987....
+        "};
+        assert_eq!(part2(lines(text))?, "13");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_c() -> Result<()> {
+        let text = indoc! {"
+            012345
+            123456
+            234567
+            345678
+            4.6789
+            56789.
+        "};
+        assert_eq!(part2(lines(text))?, "227");
+        Ok(())
+    }
+
+    #[test]
     fn test_part2() -> Result<()> {
         let text = indoc! {"
             89010123
@@ -183,7 +253,7 @@ mod test {
             01329801
             10456732
         "};
-        assert_eq!(part2(lines(text))?, "");
+        assert_eq!(part2(lines(text))?, "81");
         Ok(())
     }
 }
