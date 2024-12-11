@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 clap = { version = "4.5.22", features = ["derive"] }
+enum-iterator = "2.1.0"
 itertools = "0.13.0"
 patharg = "0.4.0"
 

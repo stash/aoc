@@ -25,10 +25,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
             if f == '.' {
                 continue;
             }
-            let p = Pos {
-                x: x.try_into()?,
-                y: y.try_into()?,
-            };
+            let p = Pos::new(x,y)?;
             map.nodes.entry(f).or_insert(Vec::new()).push(p);
         }
     }
