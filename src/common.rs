@@ -5,7 +5,7 @@ use std::{
     ops::{Add, Sub},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Pos {
     pub x: isize,
     pub y: isize,
@@ -61,6 +61,22 @@ impl Add for Pos {
 }
 
 impl Display for Pos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({},{})", self.x, self.y)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Point {
+    pub x: usize,
+    pub y: usize,
+}
+impl Point {
+    pub fn new(x: usize, y: usize) -> Self {
+        Self { x, y }
+    }
+}
+impl Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({},{})", self.x, self.y)
     }
