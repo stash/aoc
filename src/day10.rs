@@ -1,8 +1,7 @@
-use std::{collections::{HashMap, HashSet}, ops::Range};
-use anyhow::{anyhow, bail, Result};
-use itertools::Itertools;
-use crate::common::{Dir,Pos};
+use crate::common::{Dir, Pos};
+use anyhow::{bail, Result};
 use enum_iterator;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 struct Map {
@@ -10,20 +9,18 @@ struct Map {
 }
 
 fn parse(lines: Vec<String>) -> Result<Map> {
-    let mut map = Map {
-        layers: Vec::new()
-    };
+    let mut map = Map { layers: Vec::new() };
     for _ in 0..=10 {
         map.layers.push(Vec::new());
     }
 
-    for (y,line) in lines.into_iter().enumerate() {
-        for (x,c) in line.chars().enumerate() {
-            let p = Pos::new(x,y)?;
+    for (y, line) in lines.into_iter().enumerate() {
+        for (x, c) in line.chars().enumerate() {
+            let p = Pos::new(x, y)?;
             let z = match c {
                 '.' => 10, // "unreachable"
                 '0'..='9' => c.to_digit(10).expect("decimal digit"),
-                c => bail!("invalid map character {}", c)
+                c => bail!("invalid map character {}", c),
             } as usize;
             map.layers[z].push(p);
         }
@@ -100,7 +97,6 @@ fn pathways(map: &Map) -> usize {
         above = current;
     }
 
-    
     above.into_values().sum()
 }
 
@@ -118,9 +114,7 @@ mod test {
     use super::*;
 
     fn lines(text: &str) -> Vec<String> {
-        text.lines()
-            .map(|x| x.to_string())
-            .collect()
+        text.lines().map(|x| x.to_string()).collect()
     }
 
     #[test]
@@ -164,7 +158,6 @@ mod test {
         assert_eq!(part1(lines(text))?, "4");
         Ok(())
     }
-
 
     #[test]
     fn test_part1_d() -> Result<()> {

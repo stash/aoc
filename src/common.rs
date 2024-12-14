@@ -1,6 +1,9 @@
 use anyhow::Result;
 use enum_iterator::Sequence;
-use std::{fmt::Display, ops::{Add,Sub}};
+use std::{
+    fmt::Display,
+    ops::{Add, Sub},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos {
@@ -9,7 +12,7 @@ pub struct Pos {
 }
 
 impl Pos {
-    pub fn new(x:usize, y:usize) -> Result<Self>{
+    pub fn new(x: usize, y: usize) -> Result<Self> {
         Ok(Self {
             x: x.try_into()?,
             y: y.try_into()?,
@@ -18,10 +21,22 @@ impl Pos {
 
     pub fn go(&self, dir: Dir) -> Self {
         match dir {
-            Dir::Up => Self {x:self.x, y:self.y-1},
-            Dir::Left => Self {x:self.x-1, y:self.y},
-            Dir::Down => Self {x:self.x, y:self.y+1},
-            Dir::Right => Self {x:self.x+1, y:self.y},
+            Dir::Up => Self {
+                x: self.x,
+                y: self.y - 1,
+            },
+            Dir::Left => Self {
+                x: self.x - 1,
+                y: self.y,
+            },
+            Dir::Down => Self {
+                x: self.x,
+                y: self.y + 1,
+            },
+            Dir::Right => Self {
+                x: self.x + 1,
+                y: self.y,
+            },
         }
     }
 }
@@ -59,12 +74,12 @@ pub enum Dir {
     Right,
 }
 impl Dir {
-    pub fn cw(&self) -> Self {
-        match self {
-            Self::Up => Self::Right,
-            Self::Right => Self::Down,
-            Self::Down => Self::Left,
-            Self::Left => Self::Up,
-        }
-    }
+    // pub fn cw(&self) -> Self {
+    //     match self {
+    //         Self::Up => Self::Right,
+    //         Self::Right => Self::Down,
+    //         Self::Down => Self::Left,
+    //         Self::Left => Self::Up,
+    //     }
+    // }
 }

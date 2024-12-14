@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
-use anyhow::{anyhow, bail, Result};
 use crate::common::Pos;
+use anyhow::Result;
+use std::collections::{HashMap, HashSet};
 
 struct Map {
     nodes: HashMap<char, Vec<Pos>>,
@@ -25,7 +25,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
             if f == '.' {
                 continue;
             }
-            let p = Pos::new(x,y)?;
+            let p = Pos::new(x, y)?;
             map.nodes.entry(f).or_insert(Vec::new()).push(p);
         }
     }

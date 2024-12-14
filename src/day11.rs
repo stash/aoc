@@ -1,22 +1,25 @@
-use std::{collections::HashMap, ops::Deref, sync::LazyLock};
-use anyhow::{anyhow, bail, Result};
-
+use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 
 fn parse(lines: Vec<String>) -> Result<Vec<usize>> {
     let line = lines.first().ok_or_else(|| anyhow!("no lines?"))?;
-    let stones = line.split_whitespace().map(|s| s.parse().expect("int")).collect();
+    let stones = line
+        .split_whitespace()
+        .map(|s| s.parse().expect("int"))
+        .collect();
     Ok(stones)
 }
 
 fn blink(s: usize) -> (usize, Option<usize>) {
-    if s == 0 { return (1,None) }
+    if s == 0 {
+        return (1, None);
+    }
 
     let digits = s.checked_ilog10().unwrap_or(0) + 1;
     if digits % 2 == 0 {
         let d = 10_usize.pow(digits >> 1);
-        (s/d, Some(s%d))
-    }
-    else {
+        (s / d, Some(s % d))
+    } else {
         (s * 2024, None)
     }
 }
@@ -34,19 +37,21 @@ fn blink_all(stones: Vec<usize>) -> Result<Vec<usize>> {
 }
 
 /// returns total stones after specified blinks and initial stone.
-fn blink_n(s: usize, blinks: usize, memo: &mut HashMap<(usize,usize),usize>) -> usize {
-    if blinks == 0 { return 1 }
+fn blink_n(s: usize, blinks: usize, memo: &mut HashMap<(usize, usize), usize>) -> usize {
+    if blinks == 0 {
+        return 1;
+    }
 
-    if let Some(count) = memo.get(&(s,blinks)) {
+    if let Some(count) = memo.get(&(s, blinks)) {
         return *count;
     }
 
     let mut count = 0;
     let (first, second) = blink(s);
-    
-    count += blink_n(first, blinks-1, memo);
+
+    count += blink_n(first, blinks - 1, memo);
     if let Some(second) = second {
-        count += blink_n(second, blinks-1, memo);
+        count += blink_n(second, blinks - 1, memo);
     }
 
     memo.insert((s, blinks), count);
@@ -82,9 +87,7 @@ mod test {
     use super::*;
 
     fn lines(text: &str) -> Vec<String> {
-        text.lines()
-            .map(|x| x.to_string())
-            .collect()
+        text.lines().map(|x| x.to_string()).collect()
     }
 
     fn ints_to_str(stones: &Vec<usize>) -> String {
@@ -120,20 +123,17 @@ mod test {
 
     #[test]
     fn test_part2_a() -> Result<()> {
-        assert_eq!(
-            part2(vec!["0 1 10 99 999".to_owned()], 1)?,
-            "7"
-        );
+        assert_eq!(part2(vec!["0 1 10 99 999".to_owned()], 1)?, "7");
         Ok(())
     }
 
     #[test]
     fn test_part2_b() -> Result<()> {
-        assert_eq!( part2(vec!["253000 1 7".to_owned()], 1)?, "4");
-        assert_eq!( part2(vec!["253000 1 7".to_owned()], 2)?, "5");
-        assert_eq!( part2(vec!["253000 1 7".to_owned()], 3)?, "9");
-        assert_eq!( part2(vec!["253000 1 7".to_owned()], 4)?, "13");
-        assert_eq!( part2(vec!["253000 1 7".to_owned()], 5)?, "22");
+        assert_eq!(part2(vec!["253000 1 7".to_owned()], 1)?, "4");
+        assert_eq!(part2(vec!["253000 1 7".to_owned()], 2)?, "5");
+        assert_eq!(part2(vec!["253000 1 7".to_owned()], 3)?, "9");
+        assert_eq!(part2(vec!["253000 1 7".to_owned()], 4)?, "13");
+        assert_eq!(part2(vec!["253000 1 7".to_owned()], 5)?, "22");
         Ok(())
     }
 }
