@@ -1,9 +1,6 @@
-use std::rc::Rc;
-
 use anyhow::{anyhow, bail, Result};
 
-use crate::common::*;
-
+#[derive(Clone)]
 struct Plot {
     plant: char,
     region: usize,
@@ -12,86 +9,90 @@ struct Plot {
 
 struct Map {
     plots: Vec<Vec<Plot>>,
-    bounds: Pos,
+    width: usize,
+    height: usize,
 }
 impl Map {
-    fn in_bounds(&self, p:Pos) -> bool {
-        p.x > 0 && p.x < self.bounds.x && p.y > 0 && p.y < self.bounds.y
+    fn merge_region(&mut self, from: usize, into: usize) {
+        for row in self.plots.iter_mut() {
+            for plot in row.iter_mut() {
+                if plot.region == from {
+                    plot.region = into;
+                }
+            }
+        }
     }
 }
 
 fn parse(lines: Vec<String>) -> Result<Map> {
-    let plots: Vec<Vec<Plot>> = lines.into_iter().map(|row| {
-        row.chars().map(|c| {
-            Plot { plant:c, region:0, fences:0 }
-        }).collect()
-    }).collect();
-    let bounds = Pos::new(
-        plots.first().ok_or_else(||anyhow!("empty map?"))?.len(),
-        plots.len(),
-    )?;
-    
-    Ok(Map { plots, bounds })
+    let plots: Vec<Vec<Plot>> = lines
+        .into_iter()
+        .map(|row| {
+            row.chars()
+                .map(|c| Plot {
+                    plant: c,
+                    region: 0,
+                    fences: 0,
+                })
+                .collect()
+        })
+        .collect();
+    let width = plots.first().ok_or_else(|| anyhow!("empty map?"))?.len();
+    let height = plots.len();
+    Ok(Map {
+        plots,
+        width,
+        height,
+    })
 }
-
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
     let mut map = parse(lines)?;
 
     // add fences to global perimiter
-    for mut plot in map.plots[0] {
-        plot.fences += 1;
+    for plot in &mut map.plots[0] {
+        plot.fences += 1; // north
     }
-    for mut plot in map.plots[(map.bounds.y-1) as usize].iter() {
-        plot.fences += 1;
+    for plot in &mut map.plots[map.height - 1].iter_mut() {
+        plot.fences += 1; // south
     }
-    for y in 0..map.bounds.y {
-        let mut plot = map.plots[y as usize][0];
-        plot.fences += 1;
-        plot = map.plots[y as usize][(map.bounds.x-1) as usize];
-        plot.fences += 1;
+    for y in 0..map.height {
+        let mut plot = &mut map.plots[y][0];
+        plot.fences += 1; // east
+        plot = &mut map.plots[y][map.width - 1];
+        plot.fences += 1; // west
     }
 
-    // scan horizontally, place fence between veg changes
-    for y in 0..map.bounds.y {
-        let prev_plant = map.plots[y as usize][0].plant;
-        for x in 1..map.bounds.x {
-            let mut cur_plant = ' ';
-            {
-                let mut plot: &mut Plot = &mut map.plots[y as usize][x as usize];
-                cur_plant = plot.plant;
-                if prev_plant != cur_plant {
-                    plot.fences += 1;
-                }
+    // scan horizontally, place fence between plant changes
+    for y in 0..map.height {
+        let prev_plant = map.plots[y][0].plant;
+        for x in 1..map.width {
+            let mut plot: &mut Plot = &mut map.plots[y][x];
+            let cur_plant = plot.plant;
+            if prev_plant != cur_plant {
+                plot.fences += 1;
             }
-            {
-                let mut plot: &mut Plot = &mut map.plots[y as usize][(x-1) as usize];
-                if prev_plant != cur_plant {
-                    plot.fences += 1;
-                }
+            plot = &mut map.plots[y][x - 1];
+            if prev_plant != cur_plant {
+                plot.fences += 1;
             }
         }
     }
 
     // scan vertically & place fences
-    for x in 0..map.bounds.x {
-        let prev_plant = map.plots[0][x as usize].plant;
-        for y in 1..map.bounds.y {
-            let mut cur_plant = ' ';
-            {
-                let plot: &mut Plot = &mut map.plots[y as usize][x as usize];
-                cur_plant = plot.plant;
-                if prev_plant != cur_plant {
-                    plot.fences += 1;
-                }
+    for x in 0..map.width {
+        let prev_plant = map.plots[0][x].plant;
+        for y in 1..map.height {
+            let mut plot: &mut Plot = &mut map.plots[y][x];
+            let cur_plant = plot.plant;
+            if prev_plant != cur_plant {
+                plot.fences += 1;
             }
-            {
-                let plot: &mut Plot = &mut map.plots[(y-1) as usize][x as usize];
-                if prev_plant != cur_plant {
-                    plot.fences += 1;
-                }
+            plot = &mut map.plots[y - 1][x];
+            if prev_plant != cur_plant {
+                plot.fences += 1;
             }
-        }   
+        }
     }
 
     // form connected groups
@@ -99,20 +100,34 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     {
         // force 0,0 to region 1
         next_region += 1;
-        let plot: &mut Plot = &mut map.plots[0][0];
+        let plot = &mut map.plots[0][0];
         plot.region = next_region;
     }
-    for x in 0..map.bounds.x {
-        for y in 1..map.bounds.y {
+    for x in 0..map.width {
+        for y in 0..map.height {
+            if x > 0 {
+                // try merge with left
+                let left = map.plots[y][x - 1].clone();
+                let plot = &mut map.plots[y][x];
+                if plot.plant == left.plant {
+                    plot.region = left.region;
+                } else {
+                    next_region += 1;
+                    plot.region = next_region;
+                }
+            }
+            if y > 0 {
+                // try merge with above. Because of the order, may join regions
+            }
         }
     }
 
-    // tally fences & area for each group (iterate over plots, accumulate by group ID)
+    // tally fences & area for each region (iterate over plots, accumulate by group ID)
 
     bail!("not done")
 }
 
-pub fn part2(lines: Vec<String>) -> Result<String> {
+pub fn part2(_lines: Vec<String>) -> Result<String> {
     bail!("not done")
 }
 
@@ -124,9 +139,7 @@ mod test {
     use super::*;
 
     fn lines(text: &str) -> Vec<String> {
-        text.lines()
-            .map(|x| x.to_string())
-            .collect()
+        text.lines().map(|x| x.to_string()).collect()
     }
 
     #[test]
@@ -135,7 +148,7 @@ mod test {
             RR
             RA
         "});
-        assert_eq!(part1(lines)?, (3*8 + 1*1).to_string());
+        assert_eq!(part1(lines)?, (3 * 8 + 1 * 1).to_string());
         Ok(())
     }
 
@@ -156,5 +169,4 @@ mod test {
         assert_eq!(part1(lines)?, "1930");
         Ok(())
     }
-
 }
