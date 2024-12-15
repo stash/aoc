@@ -2,7 +2,7 @@ use anyhow::Result;
 use enum_iterator::Sequence;
 use std::{
     fmt::Display,
-    ops::{Add, Sub},
+    ops::{Add, Mul, Sub},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -56,6 +56,15 @@ impl Add for Pos {
         Self {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
+        }
+    }
+}
+impl Mul<isize> for Pos {
+    type Output = Self;
+    fn mul(self, rhs: isize) -> Self {
+        Self {
+            x: self.x * rhs,
+            y: self.y * rhs,
         }
     }
 }

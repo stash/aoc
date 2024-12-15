@@ -12,6 +12,7 @@ mod day09;
 mod day10;
 mod day11;
 mod day12;
+mod day13;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "aoc")]
@@ -39,6 +40,7 @@ enum Commands {
     Day10,
     Day11,
     Day12,
+    Day13,
 }
 
 fn line_vec(input: InputArg) -> Result<Vec<String>> {
@@ -123,6 +125,14 @@ fn main() -> Result<()> {
                 day12::part1(lines)
             } else {
                 day12::part2(lines)
+            }
+        }
+        Commands::Day13 => {
+            let lines = line_vec(args.input)?;
+            if !args.two {
+                day13::part1(lines)
+            } else {
+                day13::part2(lines)
             }
         }
     };
