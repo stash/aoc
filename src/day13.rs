@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use regex::Regex;
-use std::{collections::HashSet, usize};
 
 use crate::common::Pos;
 
+#[derive(Debug)]
 struct Challenge {
     a: Pos,
     b: Pos,
@@ -60,11 +60,65 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
+fn exact_solution(chal: &Challenge) -> Option<(isize, isize)> {
+    // Button A & B are the basis vectors for a lattice. We want to know if the
+    // prize is "in" the lattice. In other words: are there integer coefficients
+    // ("button presses") of the also-integer basis vectors?
+
+    // Represent basis vectors as matrix M:
+    //  a b
+    //  c d
+    let m_a = chal.a.x;
+    let m_b = chal.b.x;
+    let m_c = chal.a.y;
+    let m_d = chal.b.y;
+
+    // Matrix inversion, but with integers: calculate (1/inv_det) * Adjoint
+    // First: determinant
+    let det = m_a * m_d - m_b * m_c;
+    // Second: adjoint matrix
+    let adj_a = m_d;
+    let adj_b = -m_b;
+    let adj_c = -m_c;
+    let adj_d = m_a;
+
+    // Matrix multiply by Adj, post-applying the determinant.
+    // This is effectively multiplication by the inverse of M.
+    // (These are the # of button presses)
+    let a = (chal.prize.x * adj_a + chal.prize.y * adj_b) / det;
+    let b = (chal.prize.x * adj_c + chal.prize.y * adj_d) / det;
+
+    // Check it's an actual integer solution: scale the basis vectors and check if it
+    // matches the prize coordinates.
+    let prize = chal.a * a + chal.b * b;
+    if prize == chal.prize {
+        Some((a, b))
+    } else {
+        None
+    }
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    let chals = parse(lines)?;
+    let offset = Pos {
+        x: 10000000000000,
+        y: 10000000000000,
+    };
+    let chals = parse(lines)?.into_iter().map(|c| Challenge {
+        a: c.a,
+        b: c.b,
+        prize: c.prize + offset,
+    });
+    let mut solves = Vec::new();
 
-    let mut total = 0;
+    for c in chals {
+        if let Some((a, b)) = exact_solution(&c) {
+            // There's not actually multiple solutions with different costs, as
+            // the story text suggests. Dirty, dirty lie!
+            solves.push(3 * a + b);
+        }
+    }
 
+    let total: isize = solves.into_iter().sum();
     Ok(total.to_string())
 }
 
@@ -99,6 +153,36 @@ mod test {
             Prize: X=18641, Y=10279
         "});
         assert_eq!(part1(lines)?, "480");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_yes() -> Result<()> {
+        let lines = lines(indoc! {"
+            Button A: X+26, Y+66
+            Button B: X+67, Y+21
+            Prize: X=12748, Y=12176
+
+            Button A: X+69, Y+23
+            Button B: X+27, Y+71
+            Prize: X=18641, Y=10279
+        "});
+        assert_eq!(part2(lines)?, "875318608908");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_no() -> Result<()> {
+        let lines = lines(indoc! {"
+            Button A: X+94, Y+34
+            Button B: X+22, Y+67
+            Prize: X=8400, Y=5400
+
+            Button A: X+17, Y+86
+            Button B: X+84, Y+37
+            Prize: X=7870, Y=6450
+        "});
+        assert_eq!(part2(lines)?, "0");
         Ok(())
     }
 }
