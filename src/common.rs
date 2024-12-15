@@ -98,4 +98,14 @@ impl Dir {
     //         Self::Left => Self::Up,
     //     }
     // }
+
+    /// Orthogonal directions, CCW then CW
+    pub fn orthos(&self) -> (Self, Self) {
+        match self {
+            Dir::Up => (Dir::Left, Dir::Right),
+            Dir::Left => (Dir::Down, Dir::Up),
+            Dir::Down => (Dir::Right, Dir::Left),
+            Dir::Right => (Dir::Up, Dir::Down),
+        }
+    }
 }
