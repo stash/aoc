@@ -8,6 +8,8 @@ use crate::common::{Dir, Pos};
 enum Tile {
     Empty,
     Box,
+    WideLeft,
+    WideRight,
     Bot,
     Wall,
 }
@@ -21,27 +23,96 @@ struct Map {
 }
 
 impl Map {
-    fn try_move(&mut self, p: Pos, dir: Dir) -> Result<bool> {
-        let new_p = p.go(dir);
+    fn get(&self, p: Pos) -> Tile {
+        self.tiles[p.y as usize][p.x as usize]
+    }
 
-        let tile = self.tiles[p.y as usize][p.x as usize];
+    fn set(&mut self, p: Pos, tile: Tile) {
+        self.tiles[p.y as usize][p.x as usize] = tile;
+    }
+
+    fn peek_move(&self, p: Pos, dir: Dir) -> bool {
+        let p_new = p.go(dir);
+        let tile = self.get(p);
         match tile {
-            Tile::Wall => Ok(false),
-            Tile::Empty => Ok(true),
+            Tile::Wall => false,
+            Tile::Empty => true,
+            Tile::Box => self.peek_move(p_new, dir),
+            Tile::WideLeft => match dir {
+                // both this and its dual need to be able to push
+                // L/R is easy: just chain as usual
+                Dir::Left | Dir::Right => self.peek_move(p_new, dir),
+                // U/D need to branch the recursion
+                _ => {
+                    let dual = p.go(Dir::Right);
+                    let dual_new = dual.go(dir);
+                    self.peek_move(p_new, dir) && self.peek_move(dual_new, dir)
+                }
+            },
+            Tile::WideRight => match dir {
+                Dir::Left | Dir::Right => self.peek_move(p_new, dir),
+                _ => {
+                    let dual = p.go(Dir::Left);
+                    let dual_new = dual.go(dir);
+                    self.peek_move(p_new, dir) && self.peek_move(dual_new, dir)
+                }
+            },
+            Tile::Bot => self.peek_move(p_new, dir),
+        }
+    }
+
+    fn do_move(&mut self, p: Pos, dir: Dir) {
+        let p_new = p.go(dir);
+        let tile = self.get(p);
+        match tile {
+            Tile::Wall => {}
+            Tile::Empty => {}
             Tile::Box => {
-                let move_ok = self.try_move(new_p, dir)?;
-                if move_ok {
-                    self.tiles[new_p.y as usize][new_p.x as usize] = tile;
-                }
-                Ok(move_ok)
+                self.do_move(p_new, dir);
+                self.set(p_new, tile);
+                self.set(p, Tile::Empty);
             }
-            Tile::Bot => {
-                let move_ok = self.try_move(new_p, dir)?;
-                if move_ok {
-                    self.tiles[new_p.y as usize][new_p.x as usize] = tile;
-                    self.bot = new_p;
+            Tile::WideLeft => match dir {
+                Dir::Left | Dir::Right => {
+                    // L/R is again easy: just chain
+                    self.do_move(p_new, dir);
+                    self.set(p_new, tile);
+                    self.set(p, Tile::Empty);
                 }
-                Ok(move_ok)
+                _ => {
+                    // U/D: move forward each branch before the two halves
+                    let dual = p.go(Dir::Right);
+                    let dual_new = dual.go(dir);
+                    self.do_move(p_new, dir);
+                    self.do_move(dual_new, dir);
+                    self.set(p_new, tile);
+                    self.set(p, Tile::Empty);
+                    self.set(dual_new, Tile::WideRight);
+                    self.set(dual, Tile::Empty);
+                }
+            },
+            Tile::WideRight => match dir {
+                Dir::Left | Dir::Right => {
+                    self.do_move(p_new, dir);
+                    self.set(p_new, tile);
+                    self.set(p, Tile::Empty);
+                }
+                _ => {
+                    let dual = p.go(Dir::Left);
+                    let dual_new = dual.go(dir);
+                    self.do_move(p_new, dir);
+                    self.do_move(dual_new, dir);
+                    self.set(p_new, tile);
+                    self.set(p, Tile::Empty);
+                    self.set(dual_new, Tile::WideLeft);
+                    self.set(dual, Tile::Empty);
+                }
+            },
+            Tile::Bot => {
+                self.do_move(p_new, dir);
+                self.set(p_new, tile);
+                self.set(p, Tile::Empty);
+                self.bot = p_new;
             }
         }
     }
@@ -57,6 +128,8 @@ impl Display for Map {
                     Tile::Empty => '.',
                     Tile::Bot => '@',
                     Tile::Box => 'O',
+                    Tile::WideLeft => '[',
+                    Tile::WideRight => ']',
                 };
                 f.write_char(c)?;
             }
@@ -67,7 +140,7 @@ impl Display for Map {
     }
 }
 
-fn parse(lines: Vec<String>) -> Result<Map> {
+fn parse(lines: Vec<String>, two: bool) -> Result<Map> {
     let mut iter = lines.into_iter().enumerate();
     let (mut y, mut line_str) = iter.next().ok_or_else(|| anyhow!("missing line"))?;
     let mut tiles: Vec<Vec<Tile>> = Vec::new();
@@ -85,6 +158,23 @@ fn parse(lines: Vec<String>) -> Result<Map> {
                     bot = Pos::new(x, y)?
                 }
                 _ => bail!("invalid tile {}", c),
+            }
+            if two {
+                // embiggen:
+                match c {
+                    '#' => row.push(Tile::Wall),
+                    'O' => {
+                        _ = row.pop(); // was Box
+                        row.push(Tile::WideLeft);
+                        row.push(Tile::WideRight);
+                    }
+                    '.' => row.push(Tile::Empty),
+                    '@' => {
+                        row.push(Tile::Empty);
+                        bot = Pos::new(2 * x, y)? // fix x coord
+                    }
+                    _ => bail!("invalid tile {}", c),
+                }
             }
         }
         tiles.push(row);
@@ -117,13 +207,13 @@ fn parse(lines: Vec<String>) -> Result<Map> {
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
-    let mut map = parse(lines)?;
+    let mut map = parse(lines, false)?;
     println!("bot: {:?}, bound: {:?}", map.bot, map.bounds);
     println!("map: {}", map);
     for dir in map.moves.clone() {
         let p = map.bot;
-        if map.try_move(p, dir)? {
-            map.tiles[p.y as usize][p.x as usize] = Tile::Empty;
+        if map.peek_move(p, dir) {
+            map.do_move(p, dir);
         }
     }
     println!("after: {}", map);
@@ -140,8 +230,26 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    let mut map = parse(lines)?;
-    bail!("not done")
+    let mut map = parse(lines, true)?;
+    println!("bot: {:?}, bound: {:?}", map.bot, map.bounds);
+    println!("map: {}", map);
+    for dir in map.moves.clone() {
+        let p = map.bot;
+        if map.peek_move(p, dir) {
+            map.do_move(p, dir);
+        }
+        // println!("after {:?}: {}", dir, map);
+    }
+    println!("after: {}", map);
+    let mut total: usize = 0;
+    for (y, row) in map.tiles.into_iter().enumerate() {
+        for (x, tile) in row.into_iter().enumerate() {
+            if tile == Tile::WideLeft {
+                total += 100 * y + x;
+            }
+        }
+    }
+    Ok(total.to_string())
 }
 
 #[cfg(test)]
@@ -199,6 +307,52 @@ mod test {
             v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
         "});
         assert_eq!(part1(lines)?, "10092");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_a() -> Result<()> {
+        let lines = lines(indoc! {"
+            #######
+            #...#.#
+            #.....#
+            #..OO@#
+            #..O..#
+            #.....#
+            #######
+
+            <vv<<^^<<^^
+        "});
+        assert_eq!(part2(lines)?, (105 + 207 + 306).to_string());
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_b() -> Result<()> {
+        let lines = lines(indoc! {"
+            ##########
+            #..O..O.O#
+            #......O.#
+            #.OO..O.O#
+            #..O@..O.#
+            #O#..O...#
+            #O..O..O.#
+            #.OO.O.OO#
+            #....O...#
+            ##########
+
+            <vv>^<v^>v>^vv^v>v<>v^v<v<^vv<<<^><<><>>v<vvv<>^v^>^<<<><<v<<<v^vv^v>^
+            vvv<<^>^v^^><<>>><>^<<><^vv^^<>vvv<>><^^v>^>vv<>v<<<<v<^v>^<^^>>>^<v<v
+            ><>vv>v^v^<>><>>>><^^>vv>v<^^^>>v^v^<^^>v^^>v^<^v>v<>>v^v^<v>v^^<^^vv<
+            <<v<^>>^^^^>>>v^<>vvv^><v<<<>^^^vv^<vvv>^>v<^^^^v<>^>vvvv><>>v^<<^^^^^
+            ^><^><>>><>^^<<^^v>>><^<v>^<vv>>v>>>^v><>^v><<<<v>>v<v<v>vvv>^<><<>^><
+            ^>><>^v<><^vvv<^^<><v<<<<<><^v<<<><<<^^<v<^^^><^>>^<v^><<<^>>^v<v^v<v^
+            >^>>^v>vv>^<<^v<>><<><<v<<v><>v<^vv<<<>^^v^>^^>>><<^v>>v^v><^^>>^<>vv^
+            <><^^>^^^<><vvvvv^v<v<<>^v<v>v<<^><<><<><<<^^<<<^<<>><<><^^^>^^<>^>v<>
+            ^^>vv<^v^v<vv>^<><v<^v>^^^>>>^^vvv^>vvv<>>>^<^>>>>>^<<^v>^vvv<>^<><<v>
+            v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
+        "});
+        assert_eq!(part2(lines)?, "9021");
         Ok(())
     }
 }
