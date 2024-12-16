@@ -144,7 +144,7 @@ fn main() -> Result<()> {
             if !args.two {
                 day14::part1(lines, Pos::new(101, 103)?)
             } else {
-                day14::part2(lines)
+                day14::part2(lines, Pos::new(101, 103)?)
             }
         }
     };

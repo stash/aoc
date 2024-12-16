@@ -1,4 +1,19 @@
+use std::io;
+use std::{thread::sleep, time::Duration};
+
 use anyhow::{anyhow, Result};
+use crossterm::{
+    cursor,
+    event::{
+        poll, read, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent,
+        KeyEventKind, KeyModifiers,
+    },
+    execute, queue, style, terminal,
+    terminal::{
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, DisableLineWrap, EnableLineWrap,
+        EnterAlternateScreen, LeaveAlternateScreen,
+    },
+};
 use regex::Regex;
 
 use crate::common::Pos;
@@ -10,6 +25,21 @@ struct Bot {
 impl Bot {
     fn simulate(&mut self, bounds: Pos) {
         let mut p = self.p + self.v;
+        if p.x < 0 {
+            p.x += bounds.x;
+        } else if p.x >= bounds.x {
+            p.x -= bounds.x;
+        }
+        if p.y < 0 {
+            p.y += bounds.y;
+        } else if p.y >= bounds.y {
+            p.y -= bounds.y;
+        }
+        self.p = p;
+    }
+
+    fn un_simulate(&mut self, bounds: Pos) {
+        let mut p = self.p - self.v;
         if p.x < 0 {
             p.x += bounds.x;
         } else if p.x >= bounds.x {
@@ -76,8 +106,149 @@ pub fn part1(lines: Vec<String>, bounds: Pos) -> Result<String> {
     Ok(total.to_string())
 }
 
-pub fn part2(_lines: Vec<String>) -> Result<String> {
-    todo!()
+fn part2_sim<W>(w: &mut W, bots: &mut Vec<Bot>, bounds: Pos) -> Result<String>
+where
+    W: io::Write,
+{
+    let min_dur = Duration::from_millis(50);
+    let mut dur = Duration::from_millis(250);
+    let mut n: usize = 0;
+    let at_a_time = 101; // noticed patterns at 23 + (k*101)
+    let mut simulating = false;
+    let mut forward = true;
+    let mut once = false;
+
+    queue!(w, Clear(ClearType::All),)?;
+
+    'outer: loop {
+        if poll(dur)? {
+            let event = read()?;
+            if let Event::Key(KeyEvent { code, kind, .. }) = event {
+                if kind == KeyEventKind::Press {
+                    match code {
+                        KeyCode::Backspace => break 'outer,
+                        KeyCode::Down => {
+                            dur = dur.checked_sub(Duration::from_millis(50)).unwrap_or(dur);
+                            if dur < min_dur {
+                                dur = min_dur;
+                            }
+                        }
+                        KeyCode::Up => {
+                            dur = dur.checked_add(Duration::from_millis(50)).unwrap_or(dur);
+                        }
+                        KeyCode::Left => {
+                            forward = false;
+                            once = true;
+                        }
+                        KeyCode::Right => {
+                            forward = true;
+                            once = true;
+                        }
+                        KeyCode::Char(c) => match c {
+                            ' ' => simulating = !simulating,
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if simulating || once {
+            let times = if once { 1 } else { at_a_time };
+            for _ in 0..times {
+                for b in bots.iter_mut() {
+                    if forward {
+                        b.simulate(bounds);
+                    } else {
+                        if n >= 1 {
+                            b.un_simulate(bounds);
+                        }
+                    }
+                }
+
+                if forward {
+                    n += 1;
+                } else {
+                    if n >= 1 {
+                        n -= 1;
+                    }
+                }
+            }
+
+            once = false;
+        }
+
+        queue!(w, style::ResetColor, cursor::Hide, cursor::MoveTo(0, 0),)?;
+
+        let mut lines = Vec::new();
+        for _ in 0..bounds.y {
+            lines.push(vec!['.'; bounds.x as usize]);
+        }
+        for b in bots.iter() {
+            lines[b.p.y as usize][b.p.x as usize] = '█';
+        }
+
+        queue!(
+            w,
+            style::SetBackgroundColor(if simulating {
+                style::Color::DarkGreen
+            } else {
+                style::Color::DarkRed
+            }),
+            style::SetForegroundColor(style::Color::White),
+            style::Print(format!(
+                "Iteration: {}{} @ {}ms             ",
+                n,
+                if forward { "++" } else { "--" },
+                dur.as_millis()
+            )),
+            cursor::MoveToNextLine(1),
+            style::ResetColor,
+        )?;
+        for chars in lines {
+            let line: String = chars.into_iter().collect();
+            queue!(
+                w,
+                style::Print(line),
+                cursor::MoveToNextLine(1),
+                style::ResetColor,
+            )?;
+        }
+        queue!(
+            w,
+            style::Print(format!("Iteration: {}", n)),
+            cursor::MoveToNextLine(1),
+        )?;
+        w.flush();
+    }
+
+    Ok("done".to_owned())
+}
+
+pub fn part2(lines: Vec<String>, bounds: Pos) -> Result<String> {
+    let mut bots = parse(lines)?;
+
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(
+        stdout,
+        EnableBracketedPaste,
+        DisableLineWrap,
+        EnterAlternateScreen
+    )?;
+
+    let r = part2_sim(&mut stdout, &mut bots, bounds);
+
+    execute!(
+        stdout,
+        DisableBracketedPaste,
+        EnableLineWrap,
+        LeaveAlternateScreen
+    )?;
+    disable_raw_mode()?;
+
+    r
 }
 
 #[cfg(test)]
