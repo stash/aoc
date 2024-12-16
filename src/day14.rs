@@ -1,14 +1,14 @@
 use std::io;
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use crossterm::{
     cursor,
     event::{
         poll, read, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent,
-        KeyEventKind, KeyModifiers,
+        KeyEventKind,
     },
-    execute, queue, style, terminal,
+    execute, queue, style,
     terminal::{
         disable_raw_mode, enable_raw_mode, Clear, ClearType, DisableLineWrap, EnableLineWrap,
         EnterAlternateScreen, LeaveAlternateScreen,
@@ -220,7 +220,8 @@ where
             style::Print(format!("Iteration: {}", n)),
             cursor::MoveToNextLine(1),
         )?;
-        w.flush();
+
+        w.flush()?;
     }
 
     Ok("done".to_owned())
