@@ -13,6 +13,9 @@ mod day10;
 mod day11;
 mod day12;
 mod day13;
+mod day14;
+
+use crate::common::Pos;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "aoc")]
@@ -41,6 +44,7 @@ enum Commands {
     Day11,
     Day12,
     Day13,
+    Day14,
 }
 
 fn line_vec(input: InputArg) -> Result<Vec<String>> {
@@ -133,6 +137,14 @@ fn main() -> Result<()> {
                 day13::part1(lines)
             } else {
                 day13::part2(lines)
+            }
+        }
+        Commands::Day14 => {
+            let lines = line_vec(args.input)?;
+            if !args.two {
+                day14::part1(lines, Pos::new(101, 103)?)
+            } else {
+                day14::part2(lines)
             }
         }
     };
