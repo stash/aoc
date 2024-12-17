@@ -57,7 +57,7 @@ fn map_to_graph(map: &Map) -> Result<Graph<Point, ()>> {
         let has_r = map.has(&r);
         let has_d = map.has(&d);
         let has_l = map.has(&l);
-        // horizontals: forward, forward == 2
+        // skips: forward, forward == 2
         if has_u && has_d {
             q.push((u, d, 2.));
             q.push((d, u, 2.));
@@ -110,7 +110,6 @@ fn map_to_graph(map: &Map) -> Result<Graph<Point, ()>> {
         }
     }
 
-    println!("{:?}", q);
     g.add_edge_tuples_weighted(q).map_err(graphrs_anyhow)?;
 
     Ok(g)
@@ -118,7 +117,6 @@ fn map_to_graph(map: &Map) -> Result<Graph<Point, ()>> {
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
     let map = parse(lines)?;
-    // exclude_dead_ends(&mut map);
     let g = map_to_graph(&map)?;
     let sp = dijkstra::single_source(&g, true, map.start, Some(map.end), None, true, true)
         .map_err(graphrs_anyhow)?;
@@ -133,7 +131,63 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
     let map = parse(lines)?;
-    let total: usize = map.spaces.len();
+    let g = map_to_graph(&map)?;
+    let sp = dijkstra::single_source(&g, true, map.start, Some(map.end), None, false, true)
+        .map_err(graphrs_anyhow)?;
+
+    let mut travelled: HashSet<Point> = HashSet::new();
+    if let Some(info) = sp.get(&map.end) {
+        println!(
+            "from {} = {}, {} paths",
+            map.start,
+            info.distance,
+            info.paths.len()
+        );
+        for path in info.paths.iter() {
+            let mut iter = path.iter();
+            let mut prev = iter.next().unwrap();
+            travelled.insert(*prev);
+            while let Some(next) = iter.next() {
+                travelled.insert(*next);
+                let dx = prev.x.abs_diff(next.x);
+                let dy = prev.y.abs_diff(next.y);
+                if (dx == 0 && dy == 1) || (dx == 1 && dy == 0) {
+                    // already done
+                } else if dx == 2 {
+                    // skip horiz
+                    let missing_x = (prev.x + next.x) / 2;
+                    travelled.insert(Point {
+                        x: missing_x,
+                        y: prev.y,
+                    });
+                } else if dy == 2 {
+                    // skip vert
+                    let missing_y = (prev.y + next.y) / 2;
+                    travelled.insert(Point {
+                        x: prev.x,
+                        y: missing_y,
+                    });
+                } else if dx == 1 && dy == 1 {
+                    // corner
+                    let cand1 = Point {
+                        x: next.x,
+                        y: prev.y,
+                    };
+                    let cand2 = Point {
+                        x: prev.x,
+                        y: next.y,
+                    };
+                    if map.has(&cand1) {
+                        travelled.insert(cand1);
+                    } else {
+                        travelled.insert(cand2);
+                    }
+                }
+                prev = next;
+            }
+        }
+    }
+    let total: usize = travelled.len();
     Ok(total.to_string())
 }
 
@@ -209,6 +263,54 @@ mod test {
             #################
         "});
         assert_eq!(part1(lines)?, "11048");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_a() -> Result<()> {
+        let lines = lines(indoc! {"
+            ###############
+            #.......#....E#
+            #.#.###.#.###.#
+            #.....#.#...#.#
+            #.###.#####.#.#
+            #.#.#.......#.#
+            #.#.#####.###.#
+            #...........#.#
+            ###.#.#####.#.#
+            #...#.....#.#.#
+            #.#.#.###.#.#.#
+            #.....#...#.#.#
+            #.###.#.#.#.#.#
+            #S..#.....#...#
+            ###############
+        "});
+        assert_eq!(part2(lines)?, "45");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2_b() -> Result<()> {
+        let lines = lines(indoc! {"
+            #################
+            #...#...#...#..E#
+            #.#.#.#.#.#.#.#.#
+            #.#.#.#...#...#.#
+            #.#.#.#.###.#.#.#
+            #...#.#.#.....#.#
+            #.#.#.#.#.#####.#
+            #.#...#.#.#.....#
+            #.#.#####.#.###.#
+            #.#.#.......#...#
+            #.#.###.#####.###
+            #.#.#...#.....#.#
+            #.#.#.#####.###.#
+            #.#.#.........#.#
+            #.#.#.#########.#
+            #S#.............#
+            #################
+        "});
+        assert_eq!(part2(lines)?, "64");
         Ok(())
     }
 }
