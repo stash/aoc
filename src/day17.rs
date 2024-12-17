@@ -1,13 +1,14 @@
+use anyhow::{bail, Result};
 use itertools::join;
 
-use anyhow::{anyhow, bail, Result};
-
+#[derive(Clone, Debug)]
 struct Computer {
     a: usize,
     b: usize,
     c: usize,
     ip: usize,
     mem: Vec<u8>,
+    out: Vec<u8>,
 }
 impl Computer {
     fn read(&mut self) -> Result<usize> {
@@ -18,6 +19,7 @@ impl Computer {
             bail!("halt")
         }
     }
+
     fn combo(&mut self) -> Result<usize> {
         let v = self.read()?;
         Ok(match v {
@@ -34,7 +36,7 @@ impl Computer {
         Ok(self.a >> v)
     }
 
-    fn simulate(&mut self, output: &mut Vec<u8>) -> Result<()> {
+    fn simulate(&mut self, two: bool) -> Result<()> {
         if self.ip >= self.mem.len() {
             bail!("halt");
         }
@@ -44,16 +46,19 @@ impl Computer {
             0 => {
                 // adv (really "right shift")
                 self.a = self.shr()?;
+                // println!("adv {:?}", self);
             }
             1 => {
                 // bxl
                 let x = self.b;
                 let y = self.read()?;
                 self.b = x ^ y;
+                // println!("bxl {:?}", self);
             }
             2 => {
                 // bst
                 self.b = self.combo()? % 8;
+                // println!("bst {:?}", self);
             }
             3 => {
                 // jnz
@@ -61,24 +66,32 @@ impl Computer {
                     let ip = self.read()?;
                     self.ip = ip;
                 }
+                // println!("jnz {:?}", self);
             }
             4 => {
                 // bxc
                 self.b = self.b ^ self.c;
                 _ = self.read()?; // "legacy reasons"
+                                  // println!("bxc {:?}", self);
             }
             5 => {
                 // out
                 let v = self.combo()?;
-                output.push((v % 8).try_into()?);
+                self.out.push((v % 8).try_into()?);
+                // println!("out {:?}", self);
+                if two && !self.mem.starts_with(&self.out) {
+                    bail!("early")
+                }
             }
             6 => {
                 // bdv
                 self.b = self.shr()?;
+                // println!("bdv {:?}", self);
             }
             7 => {
                 // cdv
                 self.c = self.shr()?;
+                // println!("cdv {:?}", self);
             }
             _ => {}
         }
@@ -103,18 +116,18 @@ fn parse(lines: Vec<String>) -> Result<Computer> {
         c,
         ip: 0,
         mem,
+        out: Vec::new(),
     })
 }
 
 fn part1_sim(c: &mut Computer) -> Result<String> {
-    let mut output = Vec::new();
     loop {
-        if let Err(e) = c.simulate(&mut output) {
+        if let Err(e) = c.simulate(false) {
             println!("{:?}", e);
             break;
         }
     }
-    Ok(join(output.into_iter().map(|c| c.to_string()), ","))
+    Ok(join(c.out.iter().map(|c| c.to_string()), ","))
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
@@ -122,8 +135,66 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     part1_sim(&mut c)
 }
 
+fn sim_one_loop_hardcoded(a: usize) -> u8 {
+    // bst 4(a) - "take lower bits of a"
+    let mut b = a % 8;
+
+    // bxl b, 3
+    b = b ^ 3;
+
+    // cdv 5(b)
+    let c = a >> b;
+
+    // adv 3 - "shift off lower bits of a"
+    //a = a >> 3;
+
+    // bxc _
+    b = b ^ c;
+
+    // bxl b, 5
+    b = b ^ 5;
+
+    // out 5(b)
+    (b % 8) as u8
+    // then it jnz's back to start
+}
+
+fn part2_sim(orig_computer: &Computer, a: usize) -> bool {
+    let mut c2 = orig_computer.clone();
+    c2.a = a;
+    loop {
+        if c2.simulate(true).is_err() {
+            break;
+        }
+    }
+    return c2.out == orig_computer.mem;
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not done")
+    let c = parse(lines)?;
+    let mut desired = c.mem.clone();
+    desired.reverse();
+    let mut candidates: Vec<usize> = vec![0];
+    for d in desired {
+        let mut found = vec![];
+        for candidate in candidates {
+            for lower_bits in 0..8 {
+                let a = (candidate << 3) + lower_bits;
+                if sim_one_loop_hardcoded(a) == d {
+                    found.push(a);
+                }
+            }
+        }
+        candidates = found;
+    }
+    candidates.sort();
+    let lowest = candidates.first().unwrap();
+
+    if !part2_sim(&c, *lowest) {
+        bail!("wtf")
+    }
+
+    Ok(lowest.to_string())
 }
 
 #[cfg(test)]
@@ -145,6 +216,7 @@ mod test {
             c: 9,
             ip: 0,
             mem: vec![2, 6],
+            out: Vec::new(),
         };
         assert_eq!(part1_sim(&mut c)?, "");
         assert_eq!(c.b, 1);
@@ -159,6 +231,7 @@ mod test {
             c: 0,
             ip: 0,
             mem: vec![5, 0, 5, 1, 5, 4],
+            out: Vec::new(),
         };
         assert_eq!(part1_sim(&mut c)?, "0,1,2");
         Ok(())
@@ -172,6 +245,7 @@ mod test {
             c: 0,
             ip: 0,
             mem: vec![0, 1, 5, 4, 3, 0],
+            out: Vec::new(),
         };
         assert_eq!(part1_sim(&mut c)?, "4,2,5,6,7,7,7,7,3,1,0");
         assert_eq!(c.a, 0);
@@ -186,6 +260,7 @@ mod test {
             c: 0,
             ip: 0,
             mem: vec![1, 7],
+            out: Vec::new(),
         };
         assert_eq!(part1_sim(&mut c)?, "");
         assert_eq!(c.b, 26);
@@ -200,6 +275,7 @@ mod test {
             c: 43690,
             ip: 0,
             mem: vec![4, 0],
+            out: Vec::new(),
         };
         assert_eq!(part1_sim(&mut c)?, "");
         assert_eq!(c.b, 44354);
@@ -216,6 +292,40 @@ mod test {
             Program: 0,1,5,4,3,0
         "});
         assert_eq!(part1(lines)?, "4,6,3,5,6,3,5,2,1,0");
+        Ok(())
+    }
+
+    // Didn't write a generic solution, so this example doesn't work:
+    // But this one is super-easy to reverse engineer:
+    //  shift A right 3 bits
+    //  output lower 3 bits of A
+    //  loop if A != 0
+    // #[test]
+    // fn test_part2() -> Result<()> {
+    //     let lines = lines(indoc! {"
+    //         Register A: 2024
+    //         Register B: 0
+    //         Register C: 0
+
+    //         Program: 0,3,5,4,3,0
+    //     "});
+    //     assert_eq!(part2(lines)?, "117440");
+    //     Ok(())
+    // }
+
+    #[test]
+    fn test_part2_confirm() -> Result<()> {
+        let a1 = 236581108670061;
+        let c1 = Computer {
+            a: a1,
+            b: 0,
+            c: 0,
+            ip: 0,
+            mem: vec![2, 4, 1, 3, 7, 5, 0, 3, 4, 1, 1, 5, 5, 5, 3, 0],
+            out: Vec::new(),
+        };
+        let o1 = part2_sim(&c1, a1);
+        assert_eq!(o1, true);
         Ok(())
     }
 }
