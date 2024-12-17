@@ -3,6 +3,7 @@ use std::fmt::{Display, Write};
 use anyhow::{anyhow, bail, Result};
 
 use crate::common::{Dir, Pos};
+type Point = Pos<isize>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Tile {
@@ -16,22 +17,22 @@ enum Tile {
 
 #[derive(Debug, Clone)]
 struct Map {
-    bot: Pos,
-    bounds: Pos,
+    bot: Point,
+    bounds: Point,
     tiles: Vec<Vec<Tile>>,
     moves: Vec<Dir>,
 }
 
 impl Map {
-    fn get(&self, p: Pos) -> Tile {
+    fn get(&self, p: Point) -> Tile {
         self.tiles[p.y as usize][p.x as usize]
     }
 
-    fn set(&mut self, p: Pos, tile: Tile) {
+    fn set(&mut self, p: Point, tile: Tile) {
         self.tiles[p.y as usize][p.x as usize] = tile;
     }
 
-    fn peek_move(&self, p: Pos, dir: Dir) -> bool {
+    fn peek_move(&self, p: Point, dir: Dir) -> bool {
         let p_new = p.go(dir);
         let tile = self.get(p);
         match tile {
@@ -61,7 +62,7 @@ impl Map {
         }
     }
 
-    fn do_move(&mut self, p: Pos, dir: Dir) {
+    fn do_move(&mut self, p: Point, dir: Dir) {
         let p_new = p.go(dir);
         let tile = self.get(p);
         match tile {
@@ -145,7 +146,7 @@ fn parse(lines: Vec<String>, two: bool) -> Result<Map> {
     let (mut y, mut line_str) = iter.next().ok_or_else(|| anyhow!("missing line"))?;
     let mut tiles: Vec<Vec<Tile>> = Vec::new();
     let mut moves = Vec::new();
-    let mut bot = Pos::new(0, 0)?;
+    let mut bot = Point::default();
     loop {
         let mut row = Vec::new();
         for (x, c) in line_str.chars().enumerate() {
@@ -155,7 +156,7 @@ fn parse(lines: Vec<String>, two: bool) -> Result<Map> {
                 '.' => row.push(Tile::Empty),
                 '@' => {
                     row.push(Tile::Bot);
-                    bot = Pos::new(x, y)?
+                    bot = (x, y).try_into()?;
                 }
                 _ => bail!("invalid tile {}", c),
             }
@@ -171,7 +172,7 @@ fn parse(lines: Vec<String>, two: bool) -> Result<Map> {
                     '.' => row.push(Tile::Empty),
                     '@' => {
                         row.push(Tile::Empty);
-                        bot = Pos::new(2 * x, y)? // fix x coord
+                        bot = (2 * x, y).try_into()?; // fix x coord
                     }
                     _ => bail!("invalid tile {}", c),
                 }
@@ -197,7 +198,10 @@ fn parse(lines: Vec<String>, two: bool) -> Result<Map> {
         }
     }
 
-    let bounds = Pos::new(tiles.first().unwrap().len(), tiles.len())?;
+    let bounds = Point {
+        x: tiles.first().unwrap().len() as isize,
+        y: tiles.len() as isize,
+    };
     Ok(Map {
         bot,
         bounds,

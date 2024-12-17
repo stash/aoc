@@ -2,13 +2,15 @@ use crate::common::Pos;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
+type Point = Pos<isize>;
+
 struct Map {
-    nodes: HashMap<char, Vec<Pos>>,
-    bound: Pos,
+    nodes: HashMap<char, Vec<Pos<isize>>>,
+    bound: Point,
 }
 impl Map {
-    pub fn in_bounds(&self, p: &Pos) -> bool {
-        p.x >= 0 && p.x < self.bound.x && p.y >= 0 && p.y < self.bound.y
+    pub fn in_bounds(&self, p: &Point) -> bool {
+        p.in_bounds(&self.bound)
     }
 }
 
@@ -25,7 +27,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
             if f == '.' {
                 continue;
             }
-            let p = Pos::new(x, y)?;
+            let p = (x, y).try_into()?;
             map.nodes.entry(f).or_insert(Vec::new()).push(p);
         }
     }
@@ -33,7 +35,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
-    let mut antinodes: HashSet<Pos> = HashSet::new();
+    let mut antinodes = HashSet::new();
     let map = parse(lines)?;
     for (_f, poses) in &map.nodes {
         for i in 0..poses.len() - 1 {
@@ -62,7 +64,7 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    let mut antinodes: HashSet<Pos> = HashSet::new();
+    let mut antinodes = HashSet::new();
     let map = parse(lines)?;
     for (_f, poses) in &map.nodes {
         if poses.len() < 2 {

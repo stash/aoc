@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 struct Map {
-    layers: Vec<Vec<Pos>>,
+    layers: Vec<Vec<Pos<isize>>>,
 }
 
 fn parse(lines: Vec<String>) -> Result<Map> {
@@ -16,7 +16,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
 
     for (y, line) in lines.into_iter().enumerate() {
         for (x, c) in line.chars().enumerate() {
-            let p = Pos::new(x, y)?;
+            let p = (x, y).try_into()?;
             let z = match c {
                 '.' => 10, // "unreachable"
                 '0'..='9' => c.to_digit(10).expect("decimal digit"),
@@ -29,7 +29,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
 }
 
 fn peak_closure(map: &Map) -> usize {
-    let mut above: HashMap<Pos, HashSet<Pos>> = HashMap::new();
+    let mut above = HashMap::new();
     for p in &map.layers[9] {
         let mut reach = HashSet::new();
         reach.insert(*p);
@@ -38,7 +38,7 @@ fn peak_closure(map: &Map) -> usize {
 
     for z in (0..=8).rev() {
         // println!(" above {}: {:?}", z, above);
-        let mut current: HashMap<Pos, HashSet<Pos>> = HashMap::new();
+        let mut current = HashMap::new();
         for p1 in &map.layers[z] {
             // println!("  consider {:?}", p1);
             let mut reach = HashSet::new();
@@ -77,13 +77,13 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 }
 
 fn pathways(map: &Map) -> usize {
-    let mut above: HashMap<Pos, usize> = HashMap::new();
+    let mut above = HashMap::new();
     for p in &map.layers[9] {
         above.insert(*p, 1);
     }
 
     for z in (0..=8).rev() {
-        let mut current: HashMap<Pos, usize> = HashMap::new();
+        let mut current = HashMap::new();
         for p1 in &map.layers[z] {
             let mut up1 = 0;
             for dir in enum_iterator::all::<Dir>() {

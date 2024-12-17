@@ -5,17 +5,19 @@ use crate::common::Pos;
 
 #[derive(Debug)]
 struct Challenge {
-    a: Pos,
-    b: Pos,
-    prize: Pos,
+    a: Pos<isize>,
+    b: Pos<isize>,
+    prize: Pos<isize>,
 }
 
-fn re_parse_pos(haystack: &str, re: &Regex) -> Result<Pos> {
+fn re_parse_pos(haystack: &str, re: &Regex) -> Result<Pos<isize>> {
     let cap = re
         .captures(haystack)
         .ok_or_else(|| anyhow!("re fail '{}' '{}'", re, haystack))?;
-    let p = Pos::new((&cap[1]).parse::<usize>()?, (&cap[2]).parse::<usize>()?)?;
-    Ok(p)
+    Ok(Pos {
+        x: (&cap[1]).parse()?,
+        y: (&cap[2]).parse()?,
+    })
 }
 
 fn parse(lines: Vec<String>) -> Result<Vec<Challenge>> {

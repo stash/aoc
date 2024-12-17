@@ -1,70 +1,42 @@
 use std::collections::HashSet;
 
-use crate::common::{Dir, Point};
+use crate::common::{Dir, Pos};
 use anyhow::{anyhow, Result};
 use graphrs::{algorithms::components::connected_components, Graph, GraphSpecs, Node};
 
+type Point = Pos<usize>;
+
 struct Map {
     plots: Vec<Vec<char>>,
-    width: usize,
-    height: usize,
+    bounds: Point,
 }
 impl Map {
     pub fn go(&self, p: &Point, dir: Dir) -> Option<Point> {
-        match dir {
-            Dir::Up => {
-                if p.y > 0 {
-                    Some(Point::new(p.x, p.y - 1))
-                } else {
-                    None
-                }
-            }
-            Dir::Left => {
-                if p.x > 0 {
-                    Some(Point::new(p.x - 1, p.y))
-                } else {
-                    None
-                }
-            }
-            Dir::Down => {
-                if p.y < self.height - 1 {
-                    Some(Point::new(p.x, p.y + 1))
-                } else {
-                    None
-                }
-            }
-            Dir::Right => {
-                if p.x < self.width - 1 {
-                    Some(Point::new(p.x + 1, p.y))
-                } else {
-                    None
-                }
-            }
-        }
+        p.go_bounded(dir, &self.bounds)
     }
 }
 
 fn map_to_graph(map: &Map) -> Result<Graph<Point, ()>> {
     let mut g: Graph<Point, ()> = Graph::new(GraphSpecs::undirected());
-    for y in 0..map.height {
-        for x in 0..map.width {
-            let u = Point::new(x, y);
+    for y in 0..map.bounds.y {
+        for x in 0..map.bounds.x {
+            let u = Point { x, y };
             g.add_node(Node::from_name(u));
         }
     }
-    for y in 0..map.height {
-        for x in 0..map.width {
-            let u = Point::new(x, y);
+    for y in 0..map.bounds.y {
+        for x in 0..map.bounds.x {
+            let u = Point { x, y };
             let u_plant = map.plots[u.y][u.x];
             if x > 0 {
-                let v = Point::new(x - 1, y);
+                let v = Point { x: x - 1, y };
                 let v_plant = map.plots[v.y][v.x];
                 if u_plant == v_plant {
                     g.add_edge_tuple(u, v).map_err(graphrs_anyhow)?;
                 }
             }
             if y > 0 {
-                let v = Point::new(x, y - 1);
+                let v = Point { x, y: y - 1 };
                 let v_plant = map.plots[v.y][v.x];
                 if u_plant == v_plant {
                     g.add_edge_tuple(u, v).map_err(graphrs_anyhow)?;
@@ -77,13 +49,11 @@ fn map_to_graph(map: &Map) -> Result<Graph<Point, ()>> {
 
 fn parse(lines: Vec<String>) -> Result<Map> {
     let plots: Vec<Vec<char>> = lines.into_iter().map(|row| row.chars().collect()).collect();
-    let width = plots.first().ok_or_else(|| anyhow!("empty map?"))?.len();
-    let height = plots.len();
-    Ok(Map {
-        plots,
-        width,
-        height,
-    })
+    let bounds = Point {
+        x: plots.first().ok_or_else(|| anyhow!("empty map?"))?.len(),
+        y: plots.len(),
+    };
+    Ok(Map { plots, bounds })
 }
 
 fn graphrs_anyhow(err: graphrs::Error) -> anyhow::Error {
@@ -154,14 +124,15 @@ pub fn part2(lines: Vec<String>) -> Result<String> {
             let (ccw, cw) = dir.orthos();
             let mut seen = HashSet::new(); // "seen for this fence direction"
 
-            let fenced: HashSet<Point> = HashSet::from_iter(component.iter().filter_map(|x| {
-                let beside = map.go(x, dir);
-                if beside.is_none() || !component.contains(&beside.unwrap()) {
-                    Some(x.clone())
-                } else {
-                    None
-                }
-            }));
+            let fenced: HashSet<Pos<usize>> =
+                HashSet::from_iter(component.iter().filter_map(|x| {
+                    let beside = map.go(x, dir);
+                    if beside.is_none() || !component.contains(&beside.unwrap()) {
+                        Some(x.clone())
+                    } else {
+                        None
+                    }
+                }));
 
             for p in fenced.iter() {
                 if !seen.insert(p.clone()) {
