@@ -13,10 +13,10 @@ mod day10;
 mod day11;
 mod day12;
 mod day13;
-mod day14;
+// mod day14;
 mod day15;
 
-use crate::common::Pos;
+// use crate::common::Pos;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "aoc")]
@@ -45,7 +45,7 @@ enum Commands {
     Day11,
     Day12,
     Day13,
-    Day14,
+    // Day14,
     Day15,
 }
 
@@ -141,14 +141,14 @@ fn main() -> Result<()> {
                 day13::part2(lines)
             }
         }
-        Commands::Day14 => {
-            let lines = line_vec(args.input)?;
-            if !args.two {
-                day14::part1(lines, Pos::new(101, 103)?)
-            } else {
-                day14::part2(lines, Pos::new(101, 103)?)
-            }
-        }
+        // Commands::Day14 => {
+        //     let lines = line_vec(args.input)?;
+        //     if !args.two {
+        //         day14::part1(lines, Pos::new(101, 103)?)
+        //     } else {
+        //         day14::part2(lines, Pos::new(101, 103)?)
+        //     }
+        // }
         Commands::Day15 => {
             let lines = line_vec(args.input)?;
             if !args.two {
