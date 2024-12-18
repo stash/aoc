@@ -1,14 +1,10 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use graphrs::{algorithms::shortest_path::dijkstra, Graph, GraphSpecs};
 
-use crate::common::{Dir, Pos};
+use crate::common::{graphrs_anyhow, Dir, Pos};
 type Point = Pos<usize>;
-
-fn graphrs_anyhow(err: graphrs::Error) -> anyhow::Error {
-    anyhow!("graphrs: {}", err)
-}
 
 #[derive(Debug, Clone)]
 struct Map {

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::common::{Dir, Pos};
+use crate::common::{graphrs_anyhow, Dir, Pos};
 use anyhow::{anyhow, Result};
 use graphrs::{algorithms::components::connected_components, Graph, GraphSpecs, Node};
 
@@ -54,10 +54,6 @@ fn parse(lines: Vec<String>) -> Result<Map> {
         y: plots.len(),
     };
     Ok(Map { plots, bounds })
-}
-
-fn graphrs_anyhow(err: graphrs::Error) -> anyhow::Error {
-    anyhow!("graphrs: {}", err)
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {

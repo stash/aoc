@@ -1,7 +1,9 @@
+use anyhow::anyhow;
 use enum_iterator::Sequence;
 use num::{Num, Zero};
 use std::{
     fmt::Display,
+    iter,
     ops::{Add, Mul, Sub},
 };
 
@@ -46,6 +48,13 @@ where
     T: Sub<T, Output = T>,
     T: Copy + Num + Display + PartialOrd + PartialEq,
 {
+    pub fn one() -> Self {
+        Self {
+            x: T::one(),
+            y: T::one(),
+        }
+    }
+
     pub fn go(&self, dir: Dir) -> Self {
         let one = T::one();
         match dir {
@@ -117,6 +126,35 @@ where
 
     pub fn in_bounds(&self, bounds: &Self) -> bool {
         self.x >= T::zero() && self.x < bounds.x && self.y >= T::zero() && self.y < bounds.y
+    }
+
+    pub fn generator(self) -> iter::FromFn<impl FnMut() -> Option<Self>> {
+        let mut p = if self.x <= T::zero() || self.y <= T::zero() {
+            self
+        } else {
+            Self::default()
+        };
+        std::iter::from_fn(move || {
+            if p == self {
+                return None;
+            }
+
+            let out = p.clone();
+
+            if p.x < self.x {
+                p.x = p.x + T::one();
+            }
+            // fallthru from increment above:
+            if p.x == self.x {
+                p.y = p.y + T::one();
+                if p.y < self.y {
+                    p.x = T::zero();
+                } else {
+                    // terminal condition p.x == self.x && p.y == self.y
+                }
+            }
+            Some(out)
+        })
     }
 }
 
@@ -198,5 +236,71 @@ impl Dir {
             Dir::Down => (Dir::Right, Dir::Left),
             Dir::Right => (Dir::Up, Dir::Down),
         }
+    }
+}
+
+pub fn graphrs_anyhow(err: graphrs::Error) -> anyhow::Error {
+    anyhow!("graphrs: {}", err)
+}
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+
+    use super::*;
+
+    #[test]
+    fn test_pos_generator_unsigned() -> Result<()> {
+        let p: Pos<usize> = Pos { x: 2, y: 3 };
+        let expect: Vec<Pos<usize>> = (0..3_usize)
+            .map(|y| (0..2_usize).map(move |x| Pos { x, y }))
+            .flatten()
+            .collect();
+        let generated: Vec<Pos<usize>> = p.generator().collect();
+        assert_eq!(generated, expect);
+        Ok(())
+    }
+
+    #[test]
+    fn test_pos_generator_usize_zeroes() -> Result<()> {
+        let x0: Pos<usize> = Pos { x: 0, y: 3 };
+        let y0: Pos<usize> = Pos { x: 2, y: 0 };
+        let b0: Pos<usize> = Pos { x: 0, y: 0 };
+        let expect = vec![];
+        for p in [x0, y0, b0] {
+            let generated: Vec<Pos<usize>> = p.generator().collect();
+            assert_eq!(generated, expect);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_pos_generator_isize_under() -> Result<()> {
+        let p: Pos<isize> = Pos { x: 2, y: -3 };
+        let expect = vec![];
+        let generated: Vec<Pos<isize>> = p.generator().collect();
+        assert_eq!(generated, expect);
+        Ok(())
+    }
+
+    #[test]
+    fn test_pos_generator_isize_okay() -> Result<()> {
+        let p: Pos<isize> = Pos { x: 2, y: 3 };
+        let expect: Vec<Pos<isize>> = (0..3_isize)
+            .map(|y| (0..2_isize).map(move |x| Pos { x, y }))
+            .flatten()
+            .collect();
+        let generated: Vec<Pos<isize>> = p.generator().collect();
+        assert_eq!(generated, expect);
+        Ok(())
+    }
+
+    #[test]
+    fn test_pos_generator_u8_maxrow() -> Result<()> {
+        let p: Pos<u8> = Pos { x: 255, y: 1 };
+        let expect: Vec<Pos<u8>> = (0u8..=254u8).map(|x| Pos { x, y: 0 }).collect();
+        let generated: Vec<Pos<u8>> = p.generator().collect();
+        assert_eq!(generated, expect);
+        Ok(())
     }
 }
