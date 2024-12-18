@@ -33,14 +33,6 @@ impl Map {
     fn go_bounded(&self, p: &Point, dir: Dir) -> Option<Point> {
         p.go_bounded(dir, &self.bounds)
     }
-
-    fn simulate_n(&mut self, n: usize) -> Result<()> {
-        let points = self.seq.clone().into_iter().take(n);
-        for p in points {
-            self.set(p, Tile::Wall);
-        }
-        Ok(())
-    }
 }
 
 impl Display for Map {
@@ -82,35 +74,55 @@ fn parse(lines: Vec<String>, bounds: Point) -> Result<Map> {
     Ok(Map { bounds, tiles, seq })
 }
 
+type G = Graph<Pos<usize>, ()>;
+
+fn add_edges_for(m: &Map, u: Point, g: &mut G, reciprocal: bool) -> Result<()> {
+    Ok(for dir in enum_iterator::all::<Dir>() {
+        if let Some(v) = m.go_bounded(&u, dir) {
+            match m.get(v) {
+                Tile::Empty => {
+                    g.add_edge(Edge::with_weight(u, v, 1.))
+                        .map_err(graphrs_anyhow)?;
+                    if reciprocal {
+                        g.add_edge(Edge::with_weight(v, u, 1.))
+                            .map_err(graphrs_anyhow)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+}
+
+fn compose_graph(m: &Map) -> Result<G> {
+    let mut g: G = Graph::new(GraphSpecs {
+        directed: true,
+        edge_dedupe_strategy: graphrs::EdgeDedupeStrategy::KeepFirst,
+        missing_node_strategy: graphrs::MissingNodeStrategy::Create,
+        multi_edges: false,
+        self_loops: false,
+        self_loops_false_strategy: graphrs::SelfLoopsFalseStrategy::Error,
+    });
+    for u in m.bounds.clone().generator() {
+        add_edges_for(m, u, &mut g, false)?;
+    }
+    Ok(g)
+}
+
 fn part1_inner(lines: Vec<String>, bounds: Point, n: usize) -> Result<usize> {
     let mut m = parse(lines, bounds)?;
-    m.simulate_n(n)?;
-
+    {
+        let points = m.seq.clone().into_iter().take(n);
+        for p in points {
+            m.set(p, Tile::Wall);
+        }
+    }
     let start = Point::default();
     let end = bounds - Point::one();
 
-    let mut g: Graph<Point, ()> = Graph::new(GraphSpecs::directed_create_missing());
-    for u in m.bounds.clone().generator() {
-        for dir in enum_iterator::all::<Dir>() {
-            if u == end {
-                continue;
-            }
-            if let Some(v) = m.go_bounded(&u, dir) {
-                if v == start {
-                    continue;
-                }
-                match m.get(v) {
-                    Tile::Empty => {
-                        g.add_edge(Edge::with_weight(u, v, 1.))
-                            .map_err(graphrs_anyhow)?;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
+    let g = compose_graph(&m)?;
 
-    let sp = dijkstra::single_source(&g, true, Point { x: 0, y: 0 }, Some(end), None, true, true)
+    let sp = dijkstra::single_source(&g, true, start, Some(end), None, true, true)
         .map_err(graphrs_anyhow)?;
     if let Some(info) = sp.get(&end) {
         println!("from {} = {}", start, info.distance);
@@ -132,8 +144,39 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
-pub fn part2(_lines: Vec<String>) -> Result<String> {
-    bail!("not done")
+fn part2_inner(lines: Vec<String>, bounds: Point) -> Result<Point> {
+    let mut m = parse(lines, bounds)?;
+    let start = Point::default();
+    let end = bounds - Point::one();
+
+    // I really wish graphrs had a "remove edge", but alas. Go in reverse!
+    // Start with all points filled
+    for p in m.seq.clone() {
+        m.set(p, Tile::Wall);
+    }
+
+    // Connect initial empty set:
+    let mut g = compose_graph(&m)?;
+    // then, going in reverse, remove a wall
+    for p in m.seq.clone().into_iter().rev() {
+        m.set(p, Tile::Empty);
+        add_edges_for(&m, p, &mut g, true)?;
+        // does this open a path?
+        let bfs = g.breadth_first_search(&start);
+        if bfs.contains(&end) {
+            // then it was this point that cut it off
+            m.set(p, Tile::Mark);
+            println!("{}", m);
+            return Ok(p);
+        }
+    }
+    bail!("no cut-offs?")
+}
+
+pub fn part2(lines: Vec<String>) -> Result<String> {
+    let bounds = Point { x: 71, y: 71 };
+    let cutoff = part2_inner(lines, bounds)?;
+    Ok(format!("{},{}", cutoff.x, cutoff.y))
 }
 
 #[cfg(test)]
@@ -178,6 +221,40 @@ mod test {
         "});
         let steps = part1_inner(lines, Point { x: 7, y: 7 }, 12)?;
         assert_eq!(steps, 22);
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2() -> Result<()> {
+        let lines = lines(indoc! {"
+            5,4
+            4,2
+            4,5
+            3,0
+            2,1
+            6,3
+            2,4
+            1,5
+            0,6
+            3,3
+            2,6
+            5,1
+            1,2
+            5,5
+            2,5
+            6,5
+            1,4
+            0,4
+            6,4
+            1,1
+            6,1
+            1,0
+            0,5
+            1,6
+            2,0
+        "});
+        let steps = part2_inner(lines, Point { x: 7, y: 7 })?;
+        assert_eq!(steps, Point { x: 6, y: 1 });
         Ok(())
     }
 }
