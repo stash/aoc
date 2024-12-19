@@ -47,7 +47,7 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
-fn rec_find<'a>(d: &'a str, c: &'a Chal, cache: &mut HashMap<&'a str, usize>) -> usize {
+fn rec_find<'a>(d: &'a str, c: &Chal, cache: &mut HashMap<&'a str, usize>) -> usize {
     if d.len() == 1 && c.pat_idx.contains(d) {
         return 1;
     } else if d.len() == 0 {
