@@ -1,8 +1,5 @@
 use core::f64;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{Display, Formatter, Write},
-};
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
 use graphrs::{
@@ -37,26 +34,6 @@ impl Map {
 
     fn in_main_bounds(&self, p: &Point) -> bool {
         p.x > 0 && p.x < (self.bounds.x - 1) && p.y > 0 && p.y < (self.bounds.y - 1)
-    }
-}
-
-impl Display for Map {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("[\n")?;
-        for row in self.tiles.iter() {
-            for tile in row.iter() {
-                let c = match tile {
-                    Tile::Wall => '#',
-                    Tile::Empty => '.',
-                    Tile::Start => 'S',
-                    Tile::End => 'E',
-                };
-                f.write_char(c)?;
-            }
-            f.write_str("\n")?;
-        }
-        f.write_str("]")?;
-        Ok(())
     }
 }
 
@@ -105,25 +82,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
 
 type G = Graph<Point, ()>;
 
-fn add_edges_for(m: &Map, u: Point, edges: &mut Vec<(Point, Point)>) {
-    for dir in enum_iterator::all::<Dir>() {
-        let v = u.go(dir);
-        match m.get(v) {
-            Tile::Empty | Tile::End | Tile::Start => edges.push((u, v)),
-            _ => {}
-        }
-    }
-}
-
-fn construct_edges(m: &Map) -> Vec<(Point, Point)> {
-    let mut edges = vec![];
-    for p in m.open.iter() {
-        add_edges_for(m, *p, &mut edges)
-    }
-    edges
-}
-
-fn compose_graph(edges: Vec<(Point, Point)>) -> Result<G> {
+fn compose_graph(m: &Map) -> Result<G> {
     let mut g: G = Graph::new(GraphSpecs {
         directed: false,
         edge_dedupe_strategy: graphrs::EdgeDedupeStrategy::KeepFirst,
@@ -132,16 +91,23 @@ fn compose_graph(edges: Vec<(Point, Point)>) -> Result<G> {
         self_loops: false,
         self_loops_false_strategy: graphrs::SelfLoopsFalseStrategy::Error,
     });
-    for e in edges {
-        g.add_edge(Edge::with_weight(e.0, e.1, 1.))
-            .map_err(graphrs_anyhow)?;
+    for u in m.open.iter() {
+        for dir in enum_iterator::all::<Dir>() {
+            let v = u.go(dir);
+            match m.get(v) {
+                Tile::Empty | Tile::End | Tile::Start => {
+                    g.add_edge(Edge::with_weight(*u, v, 1.))
+                        .map_err(graphrs_anyhow)?;
+                }
+                _ => {}
+            }
+        }
     }
     Ok(g)
 }
 
 fn calc_all_sps(m: &Map) -> Result<(HashMap<Point, HashMap<Point, ShortestPathInfo<Point>>>, f64)> {
-    let orig_edges = construct_edges(m);
-    let g = compose_graph(orig_edges)?;
+    let g = compose_graph(m)?;
     let all_sps =
         dijkstra::all_pairs(&g, true, None, None, false, false).map_err(graphrs_anyhow)?;
     let main_time = {
