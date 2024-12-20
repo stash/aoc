@@ -19,6 +19,7 @@ mod day16;
 mod day17;
 mod day18;
 mod day19;
+mod day20;
 
 // use crate::common::Pos;
 
@@ -55,6 +56,7 @@ enum Commands {
     Day17,
     Day18,
     Day19,
+    Day20,
 }
 
 fn line_vec(input: InputArg) -> Result<Vec<String>> {
@@ -195,6 +197,14 @@ fn main() -> Result<()> {
                 day19::part1(lines)
             } else {
                 day19::part2(lines)
+            }
+        }
+        Commands::Day20 => {
+            let lines = line_vec(args.input)?;
+            if !args.two {
+                day20::part1(lines)
+            } else {
+                day20::part2(lines)
             }
         }
     };
