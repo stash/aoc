@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Write};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use graphrs::{algorithms::shortest_path::dijkstra, Edge, Graph, GraphSpecs};
 use itertools::Itertools;
 
