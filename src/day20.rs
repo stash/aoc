@@ -1,13 +1,14 @@
 use core::f64;
 use std::{
-    collections::{hash_set, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter, Write},
 };
 
-use anyhow::{anyhow, bail, Result};
-use graphrs::{algorithms::shortest_path::dijkstra, Edge, Graph, GraphSpecs};
-use itertools::Itertools;
-use num::Float;
+use anyhow::{bail, Result};
+use graphrs::{
+    algorithms::shortest_path::{dijkstra, ShortestPathInfo},
+    Edge, Graph, GraphSpecs,
+};
 
 use crate::common::{graphrs_anyhow, Dir, Pos};
 type Point = Pos<usize>;
@@ -102,7 +103,7 @@ fn parse(lines: Vec<String>) -> Result<Map> {
     })
 }
 
-type G = Graph<Pos<usize>, ()>;
+type G = Graph<Point, ()>;
 
 fn add_edges_for(m: &Map, u: Point, edges: &mut Vec<(Point, Point)>) {
     for dir in enum_iterator::all::<Dir>() {
@@ -138,11 +139,8 @@ fn compose_graph(edges: Vec<(Point, Point)>) -> Result<G> {
     Ok(g)
 }
 
-pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
-    let mut total = 0;
-    let m = parse(lines)?;
-
-    let orig_edges = construct_edges(&m);
+fn calc_all_sps(m: &Map) -> Result<(HashMap<Point, HashMap<Point, ShortestPathInfo<Point>>>, f64)> {
+    let orig_edges = construct_edges(m);
     let g = compose_graph(orig_edges)?;
     let all_sps =
         dijkstra::all_pairs(&g, true, None, None, false, false).map_err(graphrs_anyhow)?;
@@ -157,7 +155,13 @@ pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
             bail!("start not connected??")
         }
     };
-    println!("main path: {}", main_time);
+    Ok((all_sps, main_time))
+}
+
+pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
+    let mut total = 0;
+    let m = parse(lines)?;
+    let (all_sps, main_time) = calc_all_sps(&m)?;
 
     let mut visited: HashSet<Point> = HashSet::new();
     // visit all empty spaces and see if there's a shortcut
@@ -205,8 +209,51 @@ pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
 pub fn part1(lines: Vec<String>) -> Result<String> {
     part1_inner(lines, 100.)
 }
+
+const MAX_HACK: usize = 20;
+
+pub fn part2_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
+    let mut total = 0;
+    let m = parse(lines)?;
+    let (all_sps, main_time) = calc_all_sps(&m)?;
+    let mut visited: HashSet<Point> = HashSet::new();
+    // visit all empty spaces and see if there's a shortcut
+    for p0 in m.open.iter() {
+        if !visited.insert(*p0) {
+            continue;
+        }
+        for p1 in m.open.iter() {
+            let d = p0.manhattan(&p1);
+            if d == 0 || MAX_HACK < d {
+                continue;
+            }
+            match m.get(*p1) {
+                Tile::Empty | Tile::End | Tile::Start => {
+                    let start_p0 = all_sps.get(&m.start).unwrap().get(p0).unwrap().distance;
+                    let p1_end = all_sps.get(p1).unwrap().get(&m.end).unwrap().distance;
+                    let time = start_p0 + (d as f64) + p1_end;
+                    if main_time - time >= cutoff {
+                        // println!(
+                        //     "cheat: {}[{}]->{}[{}] d{}, {}",
+                        //     p0,
+                        //     start_p0,
+                        //     p1,
+                        //     p1_end,
+                        //     p0.manhattan(p1),
+                        //     (main_time - time)
+                        // );
+                        total += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(total.to_string())
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not done")
+    part2_inner(lines, 100.)
 }
 
 #[cfg(test)]
@@ -274,6 +321,30 @@ mod test {
 
     #[test]
     fn test_part2() -> Result<()> {
+        let lines = lines(indoc! {"
+            ###############
+            #...#...#.....#
+            #.#.#.#.#.###.#
+            #S#...#.#.#...#
+            #######.#.#.###
+            #######.#.#...#
+            #######.#.###.#
+            ###..E#...#...#
+            ###.#######.###
+            #...###...#...#
+            #.#####.#.###.#
+            #.#...#.#.#...#
+            #.#.#.#.#.#.###
+            #...#...#...###
+            ###############
+        "});
+        assert_eq!(
+            part2_inner(lines.clone(), 50.)?,
+            (32 + 31 + 29 + 39 + 25 + 23 + 20 + 19 + 12 + 14 + 12 + 22 + 4 + 3).to_string()
+        );
+        assert_eq!(part2_inner(lines.clone(), 72.)?, "29");
+        assert_eq!(part2_inner(lines.clone(), 74.)?, "7");
+        assert_eq!(part2_inner(lines.clone(), 76.)?, "3");
         Ok(())
     }
 }

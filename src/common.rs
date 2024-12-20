@@ -158,6 +158,27 @@ where
     }
 }
 
+impl<T> Pos<T>
+where
+    T: Add<T, Output = T>,
+    T: Sub<T, Output = T>,
+    T: Copy + Num + Display + PartialOrd,
+{
+    pub fn manhattan(&self, other: &Self) -> T {
+        let x = if self.x > other.x {
+            self.x - other.x
+        } else {
+            other.x - self.x
+        };
+        let y = if self.y > other.y {
+            self.y - other.y
+        } else {
+            other.y - self.y
+        };
+        return x + y;
+    }
+}
+
 impl<T> Sub for Pos<T>
 where
     T: Sub<T, Output = T>,
@@ -301,6 +322,16 @@ mod test {
         let expect: Vec<Pos<u8>> = (0u8..=254u8).map(|x| Pos { x, y: 0 }).collect();
         let generated: Vec<Pos<u8>> = p.generator().collect();
         assert_eq!(generated, expect);
+        Ok(())
+    }
+
+    #[test]
+    fn test_manhattan() -> Result<()> {
+        let p1: Pos<usize> = Pos { x: 1, y: 3 };
+        let p2: Pos<usize> = Pos { x: 3, y: 7 };
+        let expect = 6;
+        assert_eq!(p1.manhattan(&p2), expect);
+        assert_eq!(p2.manhattan(&p1), expect);
         Ok(())
     }
 }
