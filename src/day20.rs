@@ -1,11 +1,7 @@
-use core::f64;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use anyhow::{bail, Result};
-use graphrs::{
-    algorithms::shortest_path::{dijkstra, ShortestPathInfo},
-    Edge, Graph, GraphSpecs,
-};
+use graphrs::{algorithms::shortest_path::dijkstra, Edge, Graph, GraphSpecs};
 
 use crate::common::{graphrs_anyhow, Dir, Pos};
 type Point = Pos<usize>;
@@ -106,28 +102,30 @@ fn compose_graph(m: &Map) -> Result<G> {
     Ok(g)
 }
 
-fn calc_all_sps(m: &Map) -> Result<(HashMap<Point, HashMap<Point, ShortestPathInfo<Point>>>, f64)> {
+type Distances = Vec<Vec<usize>>;
+fn calc_distances(m: &Map) -> Result<(Distances, Distances, usize)> {
     let g = compose_graph(m)?;
-    let all_sps =
-        dijkstra::all_pairs(&g, true, None, None, false, false).map_err(graphrs_anyhow)?;
-    let main_time = {
-        if let Some(from_start) = all_sps.get(&m.start) {
-            if let Some(end) = from_start.get(&m.end) {
-                end.distance
-            } else {
-                bail!("start not connected??")
-            }
-        } else {
-            bail!("start not connected??")
-        }
-    };
-    Ok((all_sps, main_time))
+    // all-paths is overkill; just compute distances from all other notes to both start and end
+    let for_start = dijkstra::single_source(&g, true, m.start, None, None, false, false)
+        .map_err(graphrs_anyhow)?;
+    let for_end = dijkstra::single_source(&g, true, m.end, None, None, false, false)
+        .map_err(graphrs_anyhow)?;
+
+    let repeater = std::iter::repeat_with(|| vec![usize::MAX; m.bounds.x]);
+    let mut start_dist: Distances = repeater.take(m.bounds.y).collect();
+    let mut end_dist: Distances = repeater.take(m.bounds.y).collect();
+    for p in m.open.iter() {
+        start_dist[p.y][p.x] = for_start.get(p).expect("from-start present").distance as usize;
+        end_dist[p.y][p.x] = for_end.get(p).expect("from-end present").distance as usize;
+    }
+    let main_time = start_dist[m.end.y][m.end.x];
+    Ok((start_dist, end_dist, main_time))
 }
 
-pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
+pub fn part1_inner(lines: Vec<String>, cutoff: usize) -> Result<String> {
     let mut total = 0;
     let m = parse(lines)?;
-    let (all_sps, main_time) = calc_all_sps(&m)?;
+    let (start_dist, end_dist, main_time) = calc_distances(&m)?;
 
     let mut visited: HashSet<Point> = HashSet::new();
     // visit all empty spaces and see if there's a shortcut
@@ -147,11 +145,11 @@ pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
             }
             match (m.get(p1), m.get(p2)) {
                 (Tile::Wall, Tile::Empty | Tile::End | Tile::Start) => {
-                    // can knock out s1
-                    let start_p0 = all_sps.get(&m.start).unwrap().get(&p0).unwrap().distance;
-                    let p2_end = all_sps.get(&p2).unwrap().get(&m.end).unwrap().distance;
-                    let time = start_p0 + 2. + p2_end;
-                    if main_time - time >= cutoff {
+                    // can knock out p1
+                    let start_p0 = start_dist[p0.y][p0.x];
+                    let p2_end = end_dist[p2.y][p2.x];
+                    let time = start_p0 + 2 + p2_end;
+                    if main_time > time && main_time - time >= cutoff {
                         // println!(
                         //     "wallhack: {}[{}]->{}->{}[{}] {}",
                         //     p0,
@@ -173,15 +171,15 @@ pub fn part1_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
-    part1_inner(lines, 100.)
+    part1_inner(lines, 100)
 }
 
 const MAX_HACK: usize = 20;
 
-pub fn part2_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
+pub fn part2_inner(lines: Vec<String>, cutoff: usize) -> Result<String> {
     let mut total = 0;
     let m = parse(lines)?;
-    let (all_sps, main_time) = calc_all_sps(&m)?;
+    let (start_dist, end_dist, main_time) = calc_distances(&m)?;
     let mut visited: HashSet<Point> = HashSet::new();
     // visit all empty spaces and see if there's a shortcut
     for p0 in m.open.iter() {
@@ -195,17 +193,17 @@ pub fn part2_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
             }
             match m.get(*p1) {
                 Tile::Empty | Tile::End | Tile::Start => {
-                    let start_p0 = all_sps.get(&m.start).unwrap().get(p0).unwrap().distance;
-                    let p1_end = all_sps.get(p1).unwrap().get(&m.end).unwrap().distance;
-                    let time = start_p0 + (d as f64) + p1_end;
-                    if main_time - time >= cutoff {
+                    let start_p0 = start_dist[p0.y][p0.x];
+                    let p1_end = end_dist[p1.y][p1.x];
+                    let time = start_p0 + d + p1_end;
+                    if main_time > time && main_time - time >= cutoff {
                         // println!(
                         //     "cheat: {}[{}]->{}[{}] d{}, {}",
                         //     p0,
                         //     start_p0,
                         //     p1,
                         //     p1_end,
-                        //     p0.manhattan(p1),
+                        //     d,
                         //     (main_time - time)
                         // );
                         total += 1;
@@ -219,7 +217,7 @@ pub fn part2_inner(lines: Vec<String>, cutoff: f64) -> Result<String> {
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    part2_inner(lines, 100.)
+    part2_inner(lines, 100)
 }
 
 #[cfg(test)]
@@ -241,7 +239,7 @@ mod test {
             #S#E#
             #####
         "});
-        assert_eq!(part1_inner(lines, 1.)?, (2).to_string());
+        assert_eq!(part1_inner(lines, 1)?, (2).to_string());
         Ok(())
     }
 
@@ -254,7 +252,7 @@ mod test {
             #S#.#E..#
             #########
         "});
-        assert_eq!(part1_inner(lines, 1.)?, (3).to_string());
+        assert_eq!(part1_inner(lines, 1)?, (3).to_string());
         Ok(())
     }
 
@@ -278,10 +276,10 @@ mod test {
             ###############
         "});
         assert_eq!(
-            part1_inner(lines.clone(), 1.)?,
+            part1_inner(lines.clone(), 1)?,
             (14 + 14 + 2 + 4 + 2 + 3 + 5).to_string()
         );
-        assert_eq!(part1_inner(lines, 64.)?, "1");
+        assert_eq!(part1_inner(lines, 64)?, "1");
         Ok(())
     }
 
@@ -305,12 +303,12 @@ mod test {
             ###############
         "});
         assert_eq!(
-            part2_inner(lines.clone(), 50.)?,
+            part2_inner(lines.clone(), 50)?,
             (32 + 31 + 29 + 39 + 25 + 23 + 20 + 19 + 12 + 14 + 12 + 22 + 4 + 3).to_string()
         );
-        assert_eq!(part2_inner(lines.clone(), 72.)?, "29");
-        assert_eq!(part2_inner(lines.clone(), 74.)?, "7");
-        assert_eq!(part2_inner(lines.clone(), 76.)?, "3");
+        assert_eq!(part2_inner(lines.clone(), 72)?, "29");
+        assert_eq!(part2_inner(lines.clone(), 74)?, "7");
+        assert_eq!(part2_inner(lines.clone(), 76)?, "3");
         Ok(())
     }
 }
