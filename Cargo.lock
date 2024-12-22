@@ -90,6 +90,7 @@ dependencies = [
  "memoize",
  "num",
  "patharg",
+ "rayon",
  "regex",
 ]
 
