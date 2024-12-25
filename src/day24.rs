@@ -1,24 +1,53 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::{cell::RefCell, collections::BTreeSet};
 
 use anyhow::{anyhow, bail, Result};
+use graphrs::{Edge, Error as GraphError, Graph, GraphSpecs};
+use itertools::Itertools;
 use regex::Regex;
 
+use crate::common::graphrs_anyhow;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Operand {
     And,
     Or,
     Xor,
 }
+impl Display for Operand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::And => write!(f, "&"),
+            Self::Or => write!(f, "|"),
+            Self::Xor => write!(f, "^"),
+        }
+    }
+}
 
+#[derive(Clone)]
 struct Gate<'a> {
     lhs: &'a str,
     op: Operand,
     rhs: &'a str,
+    collapse: Option<String>,
+}
+impl Display for Gate<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(label) = &self.collapse {
+            write!(f, "{}", label)
+        } else {
+            write!(f, "({}{}{})", self.lhs, self.op, self.rhs)
+        }
+    }
 }
 
 struct Chal<'a> {
     values: RefCell<HashMap<&'a str, usize>>,
     gates: HashMap<&'a str, Gate<'a>>,
+    z_names: Vec<&'a str>,
+    gate_names: Vec<&'a str>,
+    swaps: HashMap<&'a str, &'a str>,
 }
 impl<'a> Chal<'a> {
     fn parse(lines: &'a Vec<String>) -> Result<Self> {
@@ -33,28 +62,46 @@ impl<'a> Chal<'a> {
         }
 
         let mut gates: HashMap<&str, Gate> = HashMap::new();
+        let mut z_names = Vec::new();
+        let mut gate_names = Vec::new();
         let gate_re: Regex =
             Regex::new(r"^([a-z0-9]+) (AND|X?OR) ([a-z0-9]+) -> ([a-z0-9]+)$").unwrap();
         while let Some(line) = iter.next() {
             let cap = gate_re
                 .captures(line)
                 .ok_or_else(|| anyhow!("didn't match regex"))?;
+
+            let a = cap.get(1).unwrap().as_str();
             let op = match &cap[2] {
                 "AND" => Operand::And,
                 "OR" => Operand::Or,
                 "XOR" => Operand::Xor,
                 e => bail!("invalid operand {}", e),
             };
+            let b = cap.get(3).unwrap().as_str();
+
+            let (lhs, rhs) = if a < b { (a, b) } else { (b, a) };
             let gate = Gate {
-                lhs: &cap.get(1).unwrap().as_str(),
+                lhs,
                 op,
-                rhs: &cap.get(3).unwrap().as_str(),
+                rhs,
+                collapse: None,
             };
-            gates.insert(&cap.get(4).unwrap().as_str(), gate);
+            let gate_name = cap.get(4).unwrap().as_str();
+            if gate_name.starts_with('z') {
+                z_names.push(gate_name);
+            }
+            gate_names.push(gate_name);
+            gates.insert(gate_name, gate);
         }
+        z_names.sort();
+        gate_names.sort();
         Ok(Self {
             values: RefCell::new(values),
             gates,
+            z_names,
+            gate_names,
+            swaps: HashMap::new(),
         })
     }
 
@@ -73,24 +120,342 @@ impl<'a> Chal<'a> {
         self.values.borrow_mut().insert(name, value);
         value
     }
+
+    fn trace(&self, name: &'a str) -> String {
+        let g = self.gates.get(name).unwrap();
+        if let Some(label) = &g.collapse {
+            return label.clone();
+        }
+
+        let lhs = if g.lhs.starts_with('x') || g.lhs.starts_with('y') {
+            g.lhs.to_owned()
+        } else {
+            self.trace(g.lhs)
+        };
+        let rhs = if g.rhs.starts_with('x') || g.rhs.starts_with('y') {
+            g.rhs.to_owned()
+        } else {
+            self.trace(g.rhs)
+        };
+        let infix = match g.op {
+            Operand::And => "&",
+            Operand::Or => "|",
+            Operand::Xor => "^",
+        };
+        let result: String = format!("{name}({lhs}{infix}{rhs})");
+        result
+    }
+
+    fn resolve_all(&self) -> usize {
+        let mut total: usize = 0;
+        for name in self.z_names.iter() {
+            let z = &name[1..].parse::<i32>().expect("valid number suffix");
+            let value = self.resolve(name);
+            total |= value << z;
+        }
+        total
+    }
+
+    fn add_up_prefix(&self, prefix: char) -> usize {
+        let mut total = 0;
+        for (name, value) in self.values.borrow().iter() {
+            if !name.starts_with(prefix) {
+                continue;
+            }
+            let shift = &name[1..].parse::<i32>().expect("valid number");
+            total |= value << shift;
+        }
+        total
+    }
+
+    fn set_label(&mut self, name: &'a str, label: String) {
+        self.gates.get_mut(name).unwrap().collapse = Some(label);
+    }
 }
 
 pub fn part1(lines: Vec<String>) -> Result<String> {
     let c = Chal::parse(&lines)?;
-    let mut total = 0;
-    for name in c.gates.keys() {
-        if !name.starts_with('z') {
-            continue;
-        }
-        let z = &name[1..].parse::<i32>()?;
-        let value = c.resolve(name);
-        total |= value << z;
-    }
+    let total = c.resolve_all();
     Ok(total.to_string())
 }
 
+fn build_graph<'a>(c: &'a Chal) -> Result<Graph<&'a str, ()>, GraphError> {
+    let mut g: Graph<&str, ()> = Graph::new(GraphSpecs::directed_create_missing());
+    for (name, gate) in c.gates.iter() {
+        g.add_edge(Edge::new(gate.lhs, name))?;
+        g.add_edge(Edge::new(gate.rhs, name))?;
+    }
+    Ok(g)
+}
+
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not done")
+    let mut c = Chal::parse(&lines)?;
+    let mut problems: BTreeSet<&str> = BTreeSet::new();
+
+    let x = c.add_up_prefix('x');
+    let y = c.add_up_prefix('y');
+    let expect_z = x + y;
+    println!("x : {x:045b} + \ny : {y:045b} = \nz: {expect_z:045b}");
+
+    // Full adder has 5 gates and looks like:
+    //  q[n] = x[n] ^ y[n]
+    //  r[n] = x[n] & y[n]
+    //  p[n] = q[n] & c[n-1]  -- recursive
+    //  c[n] = p[n] | r[n]
+    //  z[n] = q[n] ^ c[n-1]  -- recursive
+    // Base is:
+    //  q00 = x00 ^ y00
+    //  r00 = x00 & y00
+    //  p00 = q00 & 0 // prev carry --> always false
+    //  c00 = r00
+    //  z00 = q00
+
+    let mut p_n = vec!["___"; 45];
+    let mut q_n = vec!["___"; 45];
+    let mut r_n = vec!["___"; 45];
+    let mut c_n = vec!["___"; 45];
+    {
+        // Check z00 is correct for adding
+        let z00 = c.gates.get("z00").unwrap();
+        assert!(z00.op == Operand::Xor);
+        assert!(z00.lhs == "x00");
+        assert!(z00.rhs == "y00");
+        q_n[0] = "z00";
+    }
+
+    {
+        // Locate c00 and r00. Gate p00 is never set
+        let mut r00: Option<&str> = None;
+        for (name, gate) in &c.gates {
+            match (gate.op, gate.lhs, gate.rhs) {
+                (Operand::And, "x00", "y00") => {
+                    if r00.is_some() {
+                        bail!("duplicate gate for r00")
+                    }
+                    r00 = Some(name)
+                }
+                _ => {}
+            }
+        }
+        if let Some(name) = r00 {
+            println!("r00/c00 is {name}");
+            c_n[0] = name;
+            r_n[0] = name;
+            c.set_label(name, "r00/c00".to_owned());
+            // p[0] is never used and not set
+        } else {
+            bail!("r00 not found")
+        }
+    }
+
+    {
+        // confirm z01 is correct for adding
+        let z01 = c.gates.get("z01").unwrap();
+        assert!(z01.op == Operand::Xor);
+        let lhs = c.gates.get(z01.lhs).unwrap();
+        let rhs = c.gates.get(z01.rhs).unwrap();
+        let (c_name, _c, q_name, q) = match (&lhs.op, &rhs.op) {
+            (Operand::And, Operand::Xor) => (z01.lhs, lhs, z01.rhs, rhs),
+            (Operand::Xor, Operand::And) => (z01.rhs, rhs, z01.lhs, lhs),
+            _ => bail!("z01 invalid for adder"),
+        };
+        println!("z01 = c00 {} ^ q01 {}", c_name, q_name);
+        assert_eq!(c_name, r_n[0]);
+        assert_eq!(c_name, c_n[0]);
+        assert!(q.lhs == "x01");
+        assert!(q.rhs == "y01");
+        q_n[1] = q_name;
+        c.set_label(c_name, "c00".to_owned());
+        c.set_label(q_name, "q01".to_owned());
+    }
+
+    // confirm rest of base layer is correct
+    for (name, gate) in &c.gates {
+        // gate names get sorted, so x will always be lhs
+        if gate.lhs.starts_with('x') {
+            if gate.rhs.starts_with('x') {
+                bail!("base layer x.x conflict: {}: {}", name, c.trace(name))
+            } else if gate.rhs.starts_with('y') {
+                let x = &gate.lhs[1..].parse::<usize>().expect("valid number suffix");
+                let y = &gate.rhs[1..].parse::<usize>().expect("valid number suffix");
+                if x != y {
+                    bail!("base layer conflict: {}: {}", name, c.trace(name))
+                }
+                match gate.op {
+                    Operand::Or => bail!("base layer OR: {}: {}", name, c.trace(name)),
+                    Operand::Xor => q_n[*x] = name,
+                    Operand::And => r_n[*x] = name,
+                }
+                if gate.op == Operand::Or {}
+            }
+        } else if gate.lhs.starts_with('y') {
+            bail!("base layer y on lhs: {}: {}", name, c.trace(name))
+        }
+    }
+
+    println!("q base layer: {}", q_n.iter().join(","));
+    for (n, name) in q_n.iter().enumerate().skip(1) {
+        // skip z00, which is always in sum_n[0]
+        if name.starts_with('z') {
+            println!(
+                "base layer q-signal should not be output layer: {} needs swap",
+                name
+            );
+            problems.insert(name);
+        } else {
+            c.set_label(name, format!("q{:02}", n));
+        }
+    }
+    println!("r base layer: {}", r_n.iter().join(","));
+    for (n, name) in r_n.iter().enumerate() {
+        if name.starts_with('z') {
+            println!(
+                "base layer r-signal should not be output layer: {} needs swap",
+                name
+            );
+            problems.insert(name);
+        } else {
+            c.set_label(name, format!("r{:02}", n));
+        }
+    }
+
+    // AND gates are _either_ in the r-signal set (i.e., x[n]&y[n]) _or_ p-signal set (i.e., p[n] = q[n]&c[n-1])
+    // Find AND gates that aren't in r:
+    for (name, gate) in c
+        .gates
+        .iter()
+        .filter(|(_name, gate)| gate.op == Operand::And)
+        .filter(|(name, _gate)| !r_n.contains(*name))
+    {
+        let lhs = c.gates.get(gate.lhs).unwrap();
+        let rhs = c.gates.get(gate.rhs).unwrap();
+        let n_lhs = q_n.iter().position(|name| *name == gate.lhs);
+        let n_rhs = q_n.iter().position(|name| *name == gate.rhs);
+        if let Some(n) = n_lhs {
+            // rhs should look like c[n-1]
+            if rhs.op == Operand::Or {
+                // fine, maybe add to p[n]?
+            } else if gate.rhs == c_n[0] {
+                // base-case, likely this is c[1]
+                assert_eq!(q_n[1], gate.lhs);
+            } else {
+                println!(
+                    "rhs of AND doesn't look like c (should be OR): n={} {}{} -> {}{} & {}{}",
+                    n, name, gate, gate.lhs, lhs, gate.rhs, rhs
+                );
+                problems.insert(gate.rhs);
+            }
+        } else if let Some(n) = n_rhs {
+            // lhs should look like c[n-1]
+            if lhs.op == Operand::Or {
+                // fine, maybe add to p[n]?
+            } else if gate.lhs == c_n[0] {
+                // base-case, likely this is c[1]
+                assert_eq!(q_n[1], gate.rhs);
+            } else {
+                println!(
+                    "lhs of AND doesn't look like c (should be OR): n={} {}{} -> {}{} & {}{}",
+                    n, name, gate, gate.lhs, lhs, gate.rhs, rhs
+                );
+                problems.insert(gate.lhs);
+            }
+        }
+    }
+
+    // OR gates are used exclusively for the carry-out (c_n) bit
+    let mut label_after: Vec<(&str, String)> = vec![];
+    {
+        for (c_name, c_gate) in c
+            .gates
+            .iter()
+            .filter(|(_name, gate)| gate.op == Operand::Or)
+        {
+            // c[n] = p[n] | r[n]  -- we don't know p[n] yet
+            let maybe_r_lhs = r_n.iter().position(|name| *name == c_gate.lhs);
+            let maybe_r_rhs = r_n.iter().position(|name| *name == c_gate.rhs);
+            match (maybe_r_lhs, maybe_r_rhs) {
+                (Some(n_l), Some(n_r)) => {
+                    // TODO: doesn't happen for my input
+                }
+                (None, None) => {
+                    let lhs = c.gates.get(c_gate.lhs).unwrap();
+                    let rhs = c.gates.get(c_gate.rhs).unwrap();
+                    println!(
+                        "degenerate OR gate: neither side is r: {} {} -> {}={} {}={}",
+                        c_name, c_gate, c_gate.lhs, lhs, c_gate.rhs, rhs
+                    );
+                    // TODO: delve into sides
+                }
+                (None, Some(n)) => {
+                    // well-formed, right is r-signal
+                    let lhs = c.gates.get(c_gate.lhs).unwrap();
+                    c_n[n] = c_name;
+                    if lhs.op == Operand::And {
+                        p_n[n] = c_gate.lhs; // found p-signal
+                        label_after.push((c_name, format!("c{:02}", n)));
+                        label_after.push((&c_gate.lhs, format!("p{:02}", n)));
+                    } else {
+                        println!(
+                            "p-side of OR gate is not AND: {} {} n={}",
+                            c_gate.lhs, lhs, n
+                        );
+                        problems.insert(c_gate.lhs);
+                    }
+                }
+                (Some(n), None) => {
+                    // well-formed, left is r-signal
+                    let rhs = c.gates.get(c_gate.rhs).unwrap();
+                    // check rhs for p-signal-ness
+                    c_n[n] = c_name;
+                    if rhs.op == Operand::And {
+                        p_n[n] = c_gate.rhs; // found p-signal
+                        label_after.push((c_name, format!("c{:02}", n)));
+                        label_after.push((&c_gate.rhs, format!("p{:02}", n)));
+                    } else {
+                        println!(
+                            "p-side of OR gate is not AND: {} {}, n={}",
+                            c_gate.rhs, rhs, n
+                        );
+                        problems.insert(c_gate.rhs);
+                    }
+                }
+            }
+        }
+    }
+    for (name, label) in label_after {
+        c.set_label(name, label);
+    }
+
+    // check carry-signals are not output
+    println!("carry   : {}", c_n.iter().join(","));
+    for z_name in c_n.iter().filter(|name| name.starts_with('z')) {
+        if *z_name != "z45" {
+            println!("z-signal should never be carry: {}", z_name);
+            problems.insert(z_name);
+        }
+    }
+
+    // check p-signals are not output (except p00, which doesn't exist)
+    println!("p-signal: {}", p_n.iter().join(","));
+    for z_name in p_n.iter().skip(1).filter(|name| name.starts_with('z')) {
+        println!("z-signal should never be p-signal: {}", z_name);
+        problems.insert(z_name);
+    }
+
+    for z_gate in c.z_names.iter() {
+        // TODO: final filter here
+        // z45 should be c44
+        println!("{} = {}", z_gate, &c.trace(z_gate));
+    }
+    for (name, gate) in c.gates.iter() {
+        if let Some(label) = &gate.collapse {
+            if label == "r35" || label == "q35" {
+                println!("odd duck {} {}", name, gate);
+            }
+        }
+    }
+    println!("problems: {}", problems.into_iter().join(","));
+    bail!("stop");
 }
 
 #[cfg(test)]
@@ -155,6 +520,15 @@ mod test {
     #[test]
     fn test_part1() -> Result<()> {
         assert_eq!(part1(to_lines())?, "2024");
+        Ok(())
+    }
+
+    #[test]
+    fn test_part2() -> Result<()> {
+        for (i, j) in vec![1, 2, 3, 4, 5, 6, 7, 8].iter().tuple_combinations() {
+            println!("{i}-{j}")
+        }
+        // assert_eq!(part2(to_lines())?, "2024");
         Ok(())
     }
 }
