@@ -16,11 +16,6 @@ impl LockOrKey {
         }
         true
     }
-    pub fn invert(&self) -> Self {
-        Self {
-            pins: self.pins.iter().map(|p| 5 - p).collect(),
-        }
-    }
 }
 
 pub struct Chal {
@@ -81,7 +76,7 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
 }
 
 pub fn part2(lines: Vec<String>) -> Result<String> {
-    bail!("not done")
+    bail!("part 2 is the friends we made along the way")
 }
 
 #[cfg(test)]
