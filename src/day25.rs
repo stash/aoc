@@ -75,7 +75,7 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
-pub fn part2(lines: Vec<String>) -> Result<String> {
+pub fn part2(_lines: Vec<String>) -> Result<String> {
     bail!("part 2 is the friends we made along the way")
 }
 

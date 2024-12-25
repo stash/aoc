@@ -3,11 +3,39 @@ use std::fmt::Display;
 use std::{cell::RefCell, collections::BTreeSet};
 
 use anyhow::{anyhow, bail, Result};
-use graphrs::{Edge, Error as GraphError, Graph, GraphSpecs};
 use itertools::Itertools;
 use regex::Regex;
 
-use crate::common::graphrs_anyhow;
+// OK look...
+// This is gross.
+// This is ugly.
+// But writing the code and gradually getting to the point where each circuit is
+// labelled allowed me to filter out the outputs that looked "fine" (as in
+// `q[n]^c[n-1]`)
+//
+// To make this "for real" probably just take the labelling approach all the way
+// to its extreme. Eliminate all z-outputs that have "good" `q[n]^c[n-1]` shape,
+// then brute-force the remainder, including possible x[n] <-> y[n] swaps (that
+// was the final one for me.)
+//
+// Full adder has 5 gates and looks like:
+//     q[n] = x[n] ^ y[n]    -- intermediary "q", partial sum
+//     r[n] = x[n] & y[n]    -- intermediary "r", partial carry
+//     p[n] = q[n] & c[n-1]  -- intermediary "p", partial carry
+//     c[n] = p[n] | r[n]    -- c = full carry is "p OR r"
+//     z[n] = q[n] ^ c[n-1]  -- z = full sum (carry + x + y)
+//
+// Base-case is:
+//     r00 = x00 & y00
+//     q00 = x00 ^ y00
+//     p00 = q00 & 0 = 0
+//     c00 = r00 | 0 = r00
+//     z00 = q00 ^ 0 = q00
+//
+// Terminal case is (for 44-bit adder):
+//     z45 = c44
+//
+// Good luck.
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Operand {
@@ -46,8 +74,6 @@ struct Chal<'a> {
     values: RefCell<HashMap<&'a str, usize>>,
     gates: HashMap<&'a str, Gate<'a>>,
     z_names: Vec<&'a str>,
-    gate_names: Vec<&'a str>,
-    swaps: HashMap<&'a str, &'a str>,
 }
 impl<'a> Chal<'a> {
     fn parse(lines: &'a Vec<String>) -> Result<Self> {
@@ -63,7 +89,6 @@ impl<'a> Chal<'a> {
 
         let mut gates: HashMap<&str, Gate> = HashMap::new();
         let mut z_names = Vec::new();
-        let mut gate_names = Vec::new();
         let gate_re: Regex =
             Regex::new(r"^([a-z0-9]+) (AND|X?OR) ([a-z0-9]+) -> ([a-z0-9]+)$").unwrap();
         while let Some(line) = iter.next() {
@@ -91,17 +116,13 @@ impl<'a> Chal<'a> {
             if gate_name.starts_with('z') {
                 z_names.push(gate_name);
             }
-            gate_names.push(gate_name);
             gates.insert(gate_name, gate);
         }
         z_names.sort();
-        gate_names.sort();
         Ok(Self {
             values: RefCell::new(values),
             gates,
             z_names,
-            gate_names,
-            swaps: HashMap::new(),
         })
     }
 
@@ -179,15 +200,6 @@ pub fn part1(lines: Vec<String>) -> Result<String> {
     Ok(total.to_string())
 }
 
-fn build_graph<'a>(c: &'a Chal) -> Result<Graph<&'a str, ()>, GraphError> {
-    let mut g: Graph<&str, ()> = Graph::new(GraphSpecs::directed_create_missing());
-    for (name, gate) in c.gates.iter() {
-        g.add_edge(Edge::new(gate.lhs, name))?;
-        g.add_edge(Edge::new(gate.rhs, name))?;
-    }
-    Ok(g)
-}
-
 pub fn part2(lines: Vec<String>) -> Result<String> {
     let mut c = Chal::parse(&lines)?;
     let mut problems: BTreeSet<&str> = BTreeSet::new();
@@ -196,19 +208,6 @@ pub fn part2(lines: Vec<String>) -> Result<String> {
     let y = c.add_up_prefix('y');
     let expect_z = x + y;
     println!("x : {x:045b} + \ny : {y:045b} = \nz: {expect_z:045b}");
-
-    // Full adder has 5 gates and looks like:
-    //  q[n] = x[n] ^ y[n]
-    //  r[n] = x[n] & y[n]
-    //  p[n] = q[n] & c[n-1]  -- recursive
-    //  c[n] = p[n] | r[n]
-    //  z[n] = q[n] ^ c[n-1]  -- recursive
-    // Base is:
-    //  q00 = x00 ^ y00
-    //  r00 = x00 & y00
-    //  p00 = q00 & 0 // prev carry --> always false
-    //  c00 = r00
-    //  z00 = q00
 
     let mut p_n = vec!["___"; 45];
     let mut q_n = vec!["___"; 45];
@@ -374,8 +373,9 @@ pub fn part2(lines: Vec<String>) -> Result<String> {
             let maybe_r_lhs = r_n.iter().position(|name| *name == c_gate.lhs);
             let maybe_r_rhs = r_n.iter().position(|name| *name == c_gate.rhs);
             match (maybe_r_lhs, maybe_r_rhs) {
-                (Some(n_l), Some(n_r)) => {
-                    // TODO: doesn't happen for my input
+                (Some(_n_l), Some(_n_r)) => {
+                    // TODO: something? Doesn't happen for my input
+                    bail!("do something with two r-signals in OR")
                 }
                 (None, None) => {
                     let lhs = c.gates.get(c_gate.lhs).unwrap();
@@ -442,20 +442,30 @@ pub fn part2(lines: Vec<String>) -> Result<String> {
         problems.insert(z_name);
     }
 
-    for z_gate in c.z_names.iter() {
-        // TODO: final filter here
+    println!("resolutions:");
+    for (n, z_name) in c.z_names.iter().enumerate() {
         // z45 should be c44
-        println!("{} = {}", z_gate, &c.trace(z_gate));
+        let trace = c.trace(z_name);
+        if n > 0 {
+            // filter-out fully-resolved gates:
+            let expect_one = format!("z{:02}(q{:02}^c{:02})", n, n, n - 1);
+            let expect_two = format!("z{:02}(c{:02}^q{:02})", n, n - 1, n);
+            if trace == expect_one || trace == expect_two {
+                continue;
+            }
+        }
+        println!("{} = {}", z_name, trace);
     }
     for (name, gate) in c.gates.iter() {
         if let Some(label) = &gate.collapse {
+            // TODO: these are specific to my input and were some swapped q-&r-signals under a carry signal
             if label == "r35" || label == "q35" {
-                println!("odd duck {} {}", name, gate);
+                println!("odd duck: {} is {}", name, gate);
             }
         }
     }
     println!("problems: {}", problems.into_iter().join(","));
-    bail!("stop");
+    bail!("now go figure it out");
 }
 
 #[cfg(test)]
@@ -528,7 +538,6 @@ mod test {
         for (i, j) in vec![1, 2, 3, 4, 5, 6, 7, 8].iter().tuple_combinations() {
             println!("{i}-{j}")
         }
-        // assert_eq!(part2(to_lines())?, "2024");
         Ok(())
     }
 }
